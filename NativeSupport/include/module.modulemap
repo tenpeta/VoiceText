@@ -1,0 +1,5 @@
+module NativeSupport {
+    header "NativeSupport.h"
+    export *
+    link "z"
+}

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleName</key><string>VoiceText</string>
+    <key>CFBundleDisplayName</key><string>VoiceText</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleSignature</key><string>????</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleShortVersionString</key><string>0.1.2</string>
+    <key>CFBundleVersion</key><string>14</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>LSBackgroundOnly</key><false/>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSMicrophoneUsageDescription</key><string>VoiceText 使用麦克风录制你主动开启的听写，并发送到所配置的 ASR 服务进行识别。</string>
+    <key>InputMethodConnectionName</key><string>VoiceText_Connection</string>
+    <key>InputMethodServerControllerClass</key><string>VoiceTextInputController</string>
+    <key>InputMethodServerDelegateClass</key><string>VoiceTextInputController</string>
+    <key>TISInputSourceID</key><string>im.voicetext.inputmethod.VoiceText</string>
+    <key>TISIntendedLanguage</key><string>zh-Hans</string>
+    <key>TISIconLabels</key><dict><key>Primary</key><string>文</string></dict>
+    <key>TISIconIsTemplate</key><true/>
+    <key>tsInputMethodIconFileKey</key><string>InputSourceIcon.pdf</string>
+    <key>ComponentInputModeDict</key>
+    <dict>
+        <key>tsInputModeListKey</key>
+        <dict>
+            <key>im.voicetext.inputmethod.VoiceText.Hans</key>
+            <dict>
+                <key>TISInputSourceID</key><string>im.voicetext.inputmethod.VoiceText.Hans</string>
+                <key>TISIconLabels</key><dict><key>Primary</key><string>文</string></dict>
+                <key>TISIconIsTemplate</key><true/>
+                <key>TISIntendedLanguage</key><string>zh-Hans</string>
+                <key>tsInputModeCharacterRepertoireKey</key><array><string>Hans</string><string>Hant</string></array>
+                <key>tsInputModeDefaultStateKey</key><true/>
+                <key>tsInputModeIsVisibleKey</key><true/>
+                <key>tsInputModeKeyEquivalentModifiersKey</key><integer>4608</integer>
+                <key>tsInputModePrimaryInScriptKey</key><true/>
+                <key>tsInputModeScriptKey</key><string>smUnicodeScript</string>
+                <key>tsInputModeMenuIconFileKey</key><string>InputSourceIcon.pdf</string>
+                <key>tsInputModeAlternateMenuIconFileKey</key><string>InputSourceIcon.pdf</string>
+                <key>tsInputModePaletteIconFileKey</key><string>InputSourceIcon.pdf</string>
+            </dict>
+        </dict>
+        <key>tsVisibleInputModeOrderedArrayKey</key>
+        <array><string>im.voicetext.inputmethod.VoiceText.Hans</string></array>
+    </dict>
+</dict></plist>
