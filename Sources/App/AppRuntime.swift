@@ -14,8 +14,6 @@ final class AppRuntime {
     var asciiMode = false
     private var settingsWindow: SettingsWindowController?
     private lazy var voicePanel = VoicePanel(voice: voice)
-    private let candidatePreview = CandidatePanel()
-    private var candidatePreviewVisible = false
     private var observers: [NSObjectProtocol] = []
 
     func start() {
@@ -43,12 +41,6 @@ final class AppRuntime {
         observers.append(DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { if self?.voice.busy == true { self?.voice.cancel() } }
         })
-        observers.append(NotificationCenter.default.addObserver(forName: .voiceTextSettingsChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.candidatePreviewVisible else { return }
-                self.candidatePreview.showPreview(style: self.settings.value.appearance)
-            }
-        })
         engine.prepare()
     }
     func showSettings() {
@@ -56,20 +48,11 @@ final class AppRuntime {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(settings: settings, voice: voice, engine: engine)
             settingsWindow?.onClose = { [weak self] in
-                self?.hideCandidatePreview()
                 self?.settingsWindow = nil; NSApp.setActivationPolicy(.accessory)
             }
         }
         NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil); settingsWindow?.window?.makeKeyAndOrderFront(nil)
-    }
-    func showCandidatePreview() {
-        candidatePreviewVisible = true
-        candidatePreview.showPreview(style: settings.value.appearance)
-    }
-    func hideCandidatePreview() {
-        candidatePreviewVisible = false
-        candidatePreview.hide()
     }
     private func updateVoicePanel() { voicePanel.refreshStatus() }
     func shutdown() { if voice.busy { voice.cancel() }; activeController?.deactivateServer(nil); engine.shutdown() }

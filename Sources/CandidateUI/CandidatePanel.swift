@@ -1,27 +1,4 @@
 import AppKit
-import SwiftUI
-
-struct CandidatePreview: NSViewRepresentable {
-    let style: AppearanceSettings
-    static var snapshot: EngineSnapshot {
-        .init(preedit: "ni hao", caret: 6, selection: NSRange(location: 0, length: 6),
-              candidates: [.init(text: "你好", comment: ""), .init(text: "拟好", comment: ""), .init(text: "你号", comment: "")],
-              highlighted: 0, page: 0, lastPage: true)
-    }
-    func makeNSView(context: Context) -> NSView { CandidateView() }
-    func updateNSView(_ view: NSView, context: Context) {
-        switch style.theme {
-        case .system: view.appearance = nil
-        case .light: view.appearance = NSAppearance(named: .aqua)
-        case .dark: view.appearance = NSAppearance(named: .darkAqua)
-        }
-        if let canvas = view as? CandidateView { _ = canvas.configure(Self.snapshot, style: style, maxWidth: style.tuning.width) }
-        view.invalidateIntrinsicContentSize()
-    }
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
-        (nsView as? CandidateView)?.configure(Self.snapshot, style: style, maxWidth: style.tuning.width)
-    }
-}
 
 @MainActor
 final class CandidatePanel: NSPanel {
@@ -73,20 +50,6 @@ final class CandidatePanel: NSPanel {
         case .dark: appearance = NSAppearance(named: .darkAqua)
         }
         setFrame(NSRect(origin: origin, size: size), display: true)
-        orderFrontRegardless()
-    }
-    func showPreview(style: AppearanceSettings) {
-        hasShadow = style.tuning.shadow
-        switch style.theme {
-        case .system: appearance = nil
-        case .light: appearance = NSAppearance(named: .aqua)
-        case .dark: appearance = NSAppearance(named: .darkAqua)
-        }
-        let screen = NSScreen.main?.visibleFrame ?? .zero
-        let size = canvas.configure(CandidatePreview.snapshot, style: style, maxWidth: min(style.tuning.width, screen.width - 24))
-        setFrame(NSRect(x: screen.midX - size.width / 2, y: screen.minY + 90,
-                        width: size.width, height: size.height), display: true)
-        level = .floating
         orderFrontRegardless()
     }
     func hide(for controller: InputController? = nil) {

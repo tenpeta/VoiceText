@@ -165,17 +165,24 @@ final class InputController: IMKInputController {
         finishComposition()
         let selection = textClient.selectedRange()
         textClient.insertText(text, replacementRange: replacement)
-        // IMK insertText has no success return value. Verify the text and caret
-        // when document access is supported; otherwise offer the copy fallback.
-        guard selection.location != NSNotFound, selection.length != NSNotFound else { return false }
-        do { try await Task.sleep(for: .milliseconds(150)) }
-        catch { return false }
-        guard active, belongsToFrontmostApplication(), InputInstaller.isSelected else { return false }
-        let inserted = NSRange(location: selection.location, length: text.utf16.count)
-        let caret = textClient.selectedRange()
-        return caret.location == NSMaxRange(inserted) && caret.length == 0 &&
-            textClient.attributedSubstring(from: inserted)?.string == text
+        // Do not require document access AND caret access: clients often expose only one.
+        // Read from the original client even if focus moves after insertion.
+        for delay in [60, 100, 200] {
+            do { try await Task.sleep(for: .milliseconds(delay)) }
+            catch { return false }
+            let caret = textClient.selectedRange()
+            let length = text.utf16.count
+            let originalKnown = selection.location != NSNotFound && selection.length != NSNotFound
+            let atOriginal = originalKnown
+                ? textClient.attributedSubstring(from: NSRange(location: selection.location, length: length))?.string : nil
+            let beforeCaret = caret.location != NSNotFound && caret.location >= length
+                ? textClient.attributedSubstring(from: NSRange(location: caret.location - length, length: length))?.string : nil
+            if VoiceInsertionCheck.confirmed(text: text, original: selection, current: caret,
+                                              textAtOriginal: atOriginal, textBeforeCaret: beforeCaret) { return true }
+        }
+        return false
     }
+
     func belongsToFrontmostApplication() -> Bool {
         active && textClient?.bundleIdentifier() == NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }

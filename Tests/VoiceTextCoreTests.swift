@@ -57,6 +57,22 @@ final class VoiceTextCoreTests: XCTestCase {
         }
     }
 
+    func testVoiceInsertionAcceptsIndependentCaretAndTextEvidence() {
+        let original = NSRange(location: 5, length: 2)
+        let unavailable = NSRange(location: NSNotFound, length: NSNotFound)
+        let text = "你好😀"
+        XCTAssertTrue(VoiceInsertionCheck.confirmed(text: text, original: original,
+            current: NSRange(location: 9, length: 0), textAtOriginal: nil, textBeforeCaret: nil))
+        XCTAssertTrue(VoiceInsertionCheck.confirmed(text: text, original: original,
+            current: unavailable, textAtOriginal: text, textBeforeCaret: nil))
+        XCTAssertTrue(VoiceInsertionCheck.confirmed(text: text, original: unavailable,
+            current: NSRange(location: 9, length: 0), textAtOriginal: nil, textBeforeCaret: text))
+        XCTAssertFalse(VoiceInsertionCheck.confirmed(text: text, original: original,
+            current: original, textAtOriginal: "旧文字", textBeforeCaret: nil))
+        XCTAssertFalse(VoiceInsertionCheck.confirmed(text: text, original: unavailable,
+            current: unavailable, textAtOriginal: nil, textBeforeCaret: nil))
+    }
+
     func testLocalCredentialsPersistDeleteAndRestrictAccess() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

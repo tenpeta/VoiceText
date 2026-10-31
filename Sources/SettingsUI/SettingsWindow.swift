@@ -174,8 +174,7 @@ private final class ShortcutRecorderButton: NSButton {
 private struct AppearanceSettingsView: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        VStack(spacing: 0) {
-            Form {
+        Form {
                 Section("主题与文字") {
                     Picker("主题", selection: $settings.value.appearance.theme) { Text("跟随系统").tag(ThemeMode.system); Text("浅色").tag(ThemeMode.light); Text("深色").tag(ThemeMode.dark) }
                     Picker("候选布局", selection: $settings.value.appearance.layout) { Text("横排").tag(CandidateLayout.horizontal); Text("竖排").tag(CandidateLayout.vertical) }
@@ -184,105 +183,7 @@ private struct AppearanceSettingsView: View {
                     }
                     SliderRow(title: "字号", value: $settings.value.appearance.fontSize, range: 13...28)
                 }
-                CandidateTuningEditor(style: $settings.value.appearance)
-                Section {
-                    Button("打开桌面候选窗口预览") { AppRuntime.shared.showCandidatePreview() }
-                    Button("关闭桌面预览") { AppRuntime.shared.hideCandidatePreview() }
-                    Button("恢复候选窗口默认外观") { settings.value.appearance = AppearanceSettings() }
-                    Text("修改即时生效并自动保存。底部预览始终可见；背景模糊和阴影建议打开桌面预览观察，位置偏移需在实际输入时查看。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }.formStyle(.grouped)
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("实时预览").font(.caption).foregroundStyle(.secondary)
-                ScrollView([.horizontal, .vertical]) {
-                    CandidatePreview(style: settings.value.appearance).fixedSize()
-                }.frame(height: settings.value.appearance.layout == .horizontal ? 72 : 145)
-            }.padding(.horizontal, 24).padding(.vertical, 12)
-        }.onDisappear { AppRuntime.shared.hideCandidatePreview() }
-    }
-}
-
-private struct CandidateTuningEditor: View {
-    @Binding var style: AppearanceSettings
-    private func binding<Value>(_ key: WritableKeyPath<CandidateTuning, Value>) -> Binding<Value> {
-        Binding(get: { style.tuning[keyPath: key] }, set: { style.tuning[keyPath: key] = $0 })
-    }
-    private func slider(_ title: String, _ key: WritableKeyPath<CandidateTuning, Double>, _ range: ClosedRange<Double>, step: Double = 1, percent: Bool = false) -> some View {
-        CandidateParameterSlider(title: title, value: binding(key), range: range, step: step, percent: percent)
-    }
-    private func color(_ title: String, _ key: WritableKeyPath<CandidateTuning, CandidateColor>) -> some View {
-        ColorPicker(title, selection: Binding(get: { Color(style.tuning[keyPath: key].color) },
-            set: { style.tuning[keyPath: key] = CandidateColor(NSColor($0)) }), supportsOpacity: false)
-    }
-    var body: some View {
-        background
-        shape
-        textColors
-        layout
-    }
-    private var background: some View {
-        Section("背景") {
-            Toggle("使用系统毛玻璃材质", isOn: binding(\.systemMaterial))
-            Group {
-                slider("背景模糊", \.blur, 0...1, step: 0.01, percent: true)
-                slider("不透明度", \.opacity, 0...1, step: 0.01, percent: true)
-                color("浅色背景", \.lightBackground)
-                color("深色背景", \.darkBackground)
-            }.disabled(style.tuning.systemMaterial)
-            Text("关闭系统材质后可自定义背景。模糊为 0% 时关闭，100% 为完整系统模糊效果；文字不会参与混色。")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-    private var shape: some View {
-        Section("形状与边框") {
-            Toggle("横排使用胶囊形状", isOn: binding(\.capsule))
-            SliderRow(title: "窗口圆角", value: $style.cornerRadius, range: 0...24)
-                .disabled(style.layout == .horizontal && style.tuning.capsule)
-            Toggle("窗口阴影", isOn: binding(\.shadow))
-            slider("描边宽度", \.borderWidth, 0...3, step: 0.25)
-            slider("描边不透明度", \.borderOpacity, 0...1, step: 0.01, percent: true)
-            color("描边颜色", \.border)
-            slider("高亮圆角", \.selectionRadius, 0...24)
-        }
-    }
-    private var textColors: some View {
-        Section("文字与选中效果") {
-            color("浅色文字", \.lightText)
-            color("深色文字", \.darkText)
-            color("选中背景", \.selection)
-            color("选中文字", \.selectedText)
-            Toggle("显示候选序号", isOn: binding(\.showNumbers))
-            slider("序号字号", \.numberSize, 7...16)
-            slider("序号不透明度", \.numberOpacity, 0...1, step: 0.01, percent: true)
-        }
-    }
-    private var layout: some View {
-        Section("尺寸、间距与位置") {
-            slider("窗口最大宽度", \.width, 200...700, step: 10)
-            slider("窗口内边距", \.padding, 0...16)
-            slider("候选词间距", \.spacing, 0...16)
-            slider("行内上下留白", \.rowPadding, 0...12)
-            slider("候选词左右留白", \.wordPadding, 2...16)
-            slider("相对光标水平偏移", \.offsetX, -40...40)
-            slider("距输入区域间隔", \.offsetY, 0...30)
-        }
-    }
-}
-
-private struct CandidateParameterSlider: View {
-    let title: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-    let percent: Bool
-    var body: some View {
-        LabeledContent(title) {
-            Slider(value: $value, in: range, step: step).frame(maxWidth: 200)
-            Text(percent ? "\(Int((value * 100).rounded()))%" : value.formatted(.number.precision(.fractionLength(0...2))))
-                .monospacedDigit().frame(width: 48, alignment: .trailing)
-        }
+        }.formStyle(.grouped)
     }
 }
 

@@ -19,18 +19,18 @@ struct CandidateColor: Codable, Equatable {
 }
 
 struct CandidateTuning: Codable, Equatable {
-    var systemMaterial = true
-    var blur = 0.9
-    var opacity = 0.8
-    var lightBackground = CandidateColor(0xFAFAFA)
-    var darkBackground = CandidateColor(0x242424)
+    var systemMaterial = false
+    var blur = 1.0
+    var opacity = 0.5
+    var lightBackground = CandidateColor(0xFFFFFF)
+    var darkBackground = CandidateColor(0x333333)
     var lightText = CandidateColor(0x202020)
     var darkText = CandidateColor(0xF5F5F5)
     var selection = CandidateColor(0x6155F5)
     var selectedText = CandidateColor(0xFFFFFF)
     var border = CandidateColor(0x000000)
     var borderOpacity = 0.8
-    var borderWidth = 0.5
+    var borderWidth = 0.0
     var shadow = true
     var capsule = true
     var selectionRadius = 20.0
@@ -48,6 +48,18 @@ struct CandidateTuning: Codable, Equatable {
 
 struct AppearanceSettings: Codable, Equatable {
     var candidateTuning: CandidateTuning? = nil
+    var candidateBackgroundDefaultsApplied: Bool? = true
+    mutating func applyCandidateBackgroundDefaults() {
+        guard candidateBackgroundDefaultsApplied != true else { return }
+        let defaults = CandidateTuning()
+        var updated = tuning
+        updated.systemMaterial = defaults.systemMaterial
+        updated.blur = defaults.blur; updated.opacity = defaults.opacity
+        updated.lightBackground = defaults.lightBackground; updated.darkBackground = defaults.darkBackground
+        updated.borderWidth = defaults.borderWidth; updated.width = defaults.width
+        tuning = updated
+        candidateBackgroundDefaultsApplied = true
+    }
     var tuning: CandidateTuning {
         get { candidateTuning ?? CandidateTuning() }
         set { candidateTuning = newValue }
@@ -105,6 +117,7 @@ final class AppSettings: ObservableObject {
         if loaded.voiceModifiers != 0 {
             loaded.voiceKeyCode = 61; loaded.voiceModifiers = 0; loaded.voiceKeyName = nil
         }
+        loaded.appearance.applyCandidateBackgroundDefaults()
         value = loaded
         if let data = try? JSONEncoder().encode(loaded) { UserDefaults.standard.set(data, forKey: "settings.v1") }
     }
