@@ -1,10 +1,37 @@
 import AppKit
+import QuartzCore
+import SwiftUI
+
+struct CandidatePreview: NSViewRepresentable {
+    let style: AppearanceSettings
+    private var snapshot: EngineSnapshot {
+        .init(preedit: "ni hao", caret: 6, selection: NSRange(location: 0, length: 6),
+              candidates: [.init(text: "你好", comment: ""), .init(text: "拟好", comment: ""), .init(text: "你号", comment: "")],
+              highlighted: 0, page: 0, lastPage: true)
+    }
+    func makeNSView(context: Context) -> NSView { CandidateView() }
+    func updateNSView(_ view: NSView, context: Context) {
+        switch style.theme {
+        case .system: view.appearance = nil
+        case .light: view.appearance = NSAppearance(named: .aqua)
+        case .dark: view.appearance = NSAppearance(named: .darkAqua)
+        }
+        if let canvas = view as? CandidateView {
+            _ = canvas.configure(snapshot, style: style, maxWidth: style.tuning.width)
+        }
+        view.invalidateIntrinsicContentSize()
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
+        (nsView as? CandidateView)?.configure(snapshot, style: style, maxWidth: style.tuning.width)
+    }
+}
 
 @MainActor
 final class CandidatePanel: NSPanel {
     private let canvas = CandidateView()
     weak var owner: InputController?
     private var lastAnchor: NSRect?
+    private var displayedExpanded = false
     var visibleRange: Range<Int> { canvas.visibleRange }
     var previousStart: Int { canvas.previousStart }
     var isExpanded: Bool { canvas.expanded }
@@ -49,7 +76,18 @@ final class CandidatePanel: NSPanel {
         case .light: appearance = NSAppearance(named: .aqua)
         case .dark: appearance = NSAppearance(named: .darkAqua)
         }
-        setFrame(NSRect(origin: origin, size: size), display: true)
+        let targetFrame = NSRect(origin: origin, size: size)
+        let animate = isVisible && displayedExpanded != canvas.expanded && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        displayedExpanded = canvas.expanded
+        if animate {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                animator().setFrame(targetFrame, display: true)
+            }
+        } else {
+            setFrame(targetFrame, display: true)
+        }
         orderFrontRegardless()
     }
     func hide(for controller: InputController? = nil) {
@@ -73,6 +111,7 @@ private final class CandidateView: NSView {
         artwork.render = { [weak self] rect in self?.drawCandidates(rect) }
         addSubview(backdrop)
         tint.wantsLayer = true
+        tint.autoresizingMask = [.width, .height]
         addSubview(tint)
         addSubview(artwork)
     }
@@ -98,6 +137,7 @@ private final class CandidateView: NSView {
     private(set) var previousStart = 0
     private var pressed: Int?
     private var lastScroll = Date.distantPast
+    private var numberFont: NSFont { .monospacedDigitSystemFont(ofSize: style.tuning.numberSize, weight: .medium) }
     private var font: NSFont { NSFont(name: style.fontName, size: style.fontSize) ?? .systemFont(ofSize: style.fontSize) }
     override var isFlipped: Bool { true }
     override var intrinsicContentSize: NSSize { frame.size }
@@ -107,11 +147,12 @@ private final class CandidateView: NSView {
         highlightedIndex = snapshot.highlighted
         let tuning = style.tuning
         let padding = tuning.padding, gap = tuning.spacing
-        let numberWidth = tuning.showNumbers ? tuning.numberSize + 9 : 0
-        let inset = tuning.wordPadding + numberWidth
+        let wordPadding = max(tuning.wordPadding, style.fontSize * 0.5)
+        let numberWidth = tuning.showNumbers ? ceil(("1" as NSString).size(withAttributes: [.font: numberFont]).width) + 4 : 0
+        let inset = wordPadding + numberWidth
         let contentWidth = maxWidth - 29
-        let height = ceil(font.ascender - font.descender) + tuning.rowPadding * 2
-        let widths = snapshot.candidates.map { min(contentWidth - padding * 2, ceil(($0.text as NSString).size(withAttributes: [.font: font]).width) + inset + tuning.wordPadding) }
+        let height = max(ceil(font.ascender - font.descender) + tuning.rowPadding * 2, style.fontSize * 1.5)
+        let widths = snapshot.candidates.map { min(contentWidth - padding * 2, ceil(($0.text as NSString).size(withAttributes: [.font: font]).width) + inset + wordPadding) }
         boxes = []
         var starts = [0]
         if style.layout == .horizontal {
@@ -132,11 +173,13 @@ private final class CandidateView: NSView {
             var x = padding, y = padding
             var columns = 0
             let beginning = first
-            for width in widths.dropFirst(beginning) {
+            for measuredWidth in widths.dropFirst(beginning) {
+                var width = expanded && y > padding ? max(measuredWidth, (contentWidth - padding * 2 - gap * 5) / 6) : measuredWidth
                 if x > padding && (x + width > contentWidth - padding || columns == 9) {
                     let maxRows = min(5, max(1, Int(((NSScreen.main?.visibleFrame.height ?? 600) - 100) / (height + gap))))
                     if !expanded || Int((y - padding) / (height + gap)) + 1 >= maxRows { break }
                     x = padding; y += height + gap; columns = 0
+                    width = max(measuredWidth, (contentWidth - padding * 2 - gap * 5) / 6)
                 }
                 boxes.append(NSRect(x: x, y: y, width: width, height: height))
                 x += width + gap; columns += 1
@@ -147,7 +190,9 @@ private final class CandidateView: NSView {
         visibleRange = visibleStart..<(visibleStart + boxes.count)
         if !visibleRange.contains(highlightedIndex) { highlightedIndex = visibleRange.lowerBound }
         toggleBox = style.layout == .horizontal ? NSRect(x: maxWidth - 28, y: padding, width: 26, height: height) : .zero
-        frame.size = size
+        // The panel owns its content size. Resizing here would jump to the
+        // destination before the window animation starts.
+        if !(window is CandidatePanel) { frame.size = size }
         backdrop.frame = bounds
         artwork.frame = bounds
         tint.frame = bounds
@@ -156,7 +201,7 @@ private final class CandidateView: NSView {
         tint.isHidden = tuning.systemMaterial
         wantsLayer = true
         layer?.cornerCurve = .continuous
-        layer?.cornerRadius = tuning.capsule && style.layout == .horizontal && !expanded ? size.height / 2 : style.cornerRadius
+        layer?.cornerRadius = tuning.capsule && style.layout == .horizontal ? (expanded ? min(14, height / 2) : size.height / 2) : style.cornerRadius
         layer?.masksToBounds = true
         setAccessibilityElement(true); setAccessibilityRole(.group)
         setAccessibilityLabel(snapshot.candidates[visibleRange].map(\.text).joined(separator: "，"))
@@ -173,7 +218,7 @@ private final class CandidateView: NSView {
         layer?.borderColor = tuning.border.color.withAlphaComponent(tuning.borderOpacity).cgColor
         layer?.borderWidth = tuning.borderWidth
         if expanded {
-            NSColor.separatorColor.withAlphaComponent(0.35).setStroke()
+            NSColor.separatorColor.withAlphaComponent(0.18).setStroke()
             for row in Set(boxes.map(\.minY)).sorted().dropFirst() {
                 let line = NSBezierPath()
                 line.lineWidth = 0.5
@@ -182,6 +227,7 @@ private final class CandidateView: NSView {
                 line.stroke()
             }
         }
+        let wordPadding = max(tuning.wordPadding, style.fontSize * 0.5)
         let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
         for (i, box) in boxes.enumerated() {
             let index = visibleRange.lowerBound + i
@@ -189,11 +235,11 @@ private final class CandidateView: NSView {
             if selected { tuning.selection.color.setFill(); NSBezierPath(roundedRect: box, xRadius: min(tuning.selectionRadius, box.height / 2), yRadius: min(tuning.selectionRadius, box.height / 2)).fill() }
             let baseline = box.minY + (box.height - ceil(font.ascender - font.descender)) / 2
             let color = selected ? tuning.selectedText.color : (dark ? tuning.darkText : tuning.lightText).color
-            let numberWidth = tuning.showNumbers ? tuning.numberSize + 9 : 0
+            let numberWidth = tuning.showNumbers ? ceil(("1" as NSString).size(withAttributes: [.font: numberFont]).width) + 4 : 0
             if tuning.showNumbers && (!expanded || numberedRange.contains(index)) {
-                ("\(expanded ? index - numberedRange.lowerBound + 1 : i + 1)" as NSString).draw(at: NSPoint(x: box.minX + tuning.wordPadding, y: baseline + max(0, (style.fontSize - tuning.numberSize) / 2)), withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: tuning.numberSize, weight: .medium), .foregroundColor: color.withAlphaComponent(tuning.numberOpacity)])
+                ("\(expanded ? index - numberedRange.lowerBound + 1 : i + 1)" as NSString).draw(at: NSPoint(x: box.minX + wordPadding, y: box.midY - ("1" as NSString).size(withAttributes: [.font: numberFont]).height / 2), withAttributes: [.font: numberFont, .foregroundColor: color.withAlphaComponent(tuning.numberOpacity)])
             }
-            (snapshot.candidates[index].text as NSString).draw(in: NSRect(x: box.minX + tuning.wordPadding + numberWidth, y: baseline, width: box.width - tuning.wordPadding * 2 - numberWidth, height: box.height), withAttributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
+            (snapshot.candidates[index].text as NSString).draw(in: NSRect(x: box.minX + wordPadding + numberWidth, y: baseline, width: box.width - wordPadding * 2 - numberWidth, height: box.height), withAttributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
         }
 
         if !toggleBox.isEmpty {

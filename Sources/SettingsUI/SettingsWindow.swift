@@ -175,7 +175,7 @@ private struct AppearanceSettingsView: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
         Form {
-                Section("主题与文字") {
+            Section("主题与文字") {
                     Picker("主题", selection: $settings.value.appearance.theme) { Text("跟随系统").tag(ThemeMode.system); Text("浅色").tag(ThemeMode.light); Text("深色").tag(ThemeMode.dark) }
                     Picker("候选布局", selection: $settings.value.appearance.layout) { Text("横排").tag(CandidateLayout.horizontal); Text("竖排").tag(CandidateLayout.vertical) }
                     Picker("字体", selection: $settings.value.appearance.fontName) {
@@ -183,6 +183,11 @@ private struct AppearanceSettingsView: View {
                     }
                     SliderRow(title: "字号", value: $settings.value.appearance.fontSize, range: 13...28)
                 }
+            Section("实时预览") {
+                ScrollView([.horizontal, .vertical]) {
+                    CandidatePreview(style: settings.value.appearance).fixedSize()
+                }.frame(height: settings.value.appearance.layout == .horizontal ? 72 : 145)
+            }
         }.formStyle(.grouped)
     }
 }
