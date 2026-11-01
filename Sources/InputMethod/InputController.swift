@@ -226,7 +226,7 @@ final class InputController: IMKInputController {
     }
     override func menu() -> NSMenu! {
         let menu = NSMenu()
-        for (title, action) in [("VoiceText 设置与历史…", #selector(openSettings)),
+        for (title, action) in [("设置与历史…", #selector(openSettings)),
                                 ("切换中英文", #selector(toggleLanguage)),
                                 ("切换简繁", #selector(toggleSimplified)),
                                 ("开始 / 结束语音", #selector(toggleVoice))] {

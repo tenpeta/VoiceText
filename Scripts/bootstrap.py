@@ -70,7 +70,6 @@ def main():
         ("hchunhui/librime-lua", "ec52e48", "LICENSE", notices / "librime-lua.LICENSE"),
 
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "essay.txt", resources / "essay.txt"),
-        ("rime/rime-luna-pinyin", "56b934b099dfbeab842320f13aa8b461a6ab3e42", "LICENSE", notices / "luna-pinyin.LICENSE"),
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "LICENSE", notices / "essay.LICENSE"),
         ("rime/librime", "33e78140250125871856cdc5b42ddc6a5fcd3cd4", "LICENSE", notices / "librime.LICENSE"),
         ("google/glog", "7b134a5c82c0c0b5698bb6bf7a835b230c5638e4", "COPYING", notices / "glog.LICENSE"),
