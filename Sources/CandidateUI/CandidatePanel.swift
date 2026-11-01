@@ -34,9 +34,11 @@ final class CandidatePanel: NSPanel {
     private var displayedExpanded = false
     var visibleRange: Range<Int> { canvas.visibleRange }
     var previousStart: Int { canvas.previousStart }
+    var nextStart: Int { canvas.nextStart }
     var isExpanded: Bool { canvas.expanded }
     var highlightedIndex: Int { canvas.highlightedIndex }
     var numberedRange: Range<Int> { canvas.numberedRange }
+    var needsPreviousRow: Bool { canvas.needsPreviousRow }
     func setExpanded(_ expanded: Bool) { canvas.expanded = expanded }
     func moveSelection(_ keyCode: UInt16) -> Bool { canvas.moveSelection(keyCode) }
     override var canBecomeKey: Bool { false }
@@ -101,6 +103,9 @@ private final class CandidateView: NSView {
     private let backdrop = NSVisualEffectView()
     private let artwork = CandidateArtwork()
     private let tint = NSView()
+    private let scrollThumb = NSView()
+    private var scrollHideTask: Task<Void, Never>?
+    private var configuredExpanded = false
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         backdrop.material = .popover
@@ -114,18 +119,34 @@ private final class CandidateView: NSView {
         tint.autoresizingMask = [.width, .height]
         addSubview(tint)
         addSubview(artwork)
+        scrollThumb.wantsLayer = true
+        scrollThumb.layer?.cornerRadius = 2.5
+        scrollThumb.alphaValue = 0
+        addSubview(scrollThumb)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(point) ? self : nil }
     var select: ((Int) -> Void)?
     var toggle: (() -> Void)?
-    var expanded = false
+    var expanded = false {
+        didSet {
+            if !expanded {
+                configuredExpanded = false
+                scrollHideTask?.cancel()
+                scrollThumb.layer?.removeAllAnimations()
+                scrollThumb.alphaValue = 0
+            }
+        }
+    }
     private(set) var highlightedIndex = 0
     var numberedRange: Range<Int> {
         guard let selected = boxes.indices.first(where: { visibleRange.lowerBound + $0 == highlightedIndex }) else { return visibleRange }
         let row = boxes[selected].minY
         let indices = boxes.indices.filter { boxes[$0].minY == row }
         return (visibleRange.lowerBound + (indices.first ?? 0))..<(visibleRange.lowerBound + (indices.last ?? 0) + 1)
+    }
+    var needsPreviousRow: Bool {
+        expanded && visibleRange.lowerBound > 0 && numberedRange.lowerBound == visibleRange.lowerBound
     }
     private var toggleBox = NSRect.zero
     private var togglePressed = false
@@ -135,6 +156,7 @@ private final class CandidateView: NSView {
     private var boxes: [NSRect] = []
     private(set) var visibleRange = 0..<0
     private(set) var previousStart = 0
+    private(set) var nextStart = 0
     private var pressed: Int?
     private var lastScroll = Date.distantPast
     private var numberFont: NSFont { .monospacedDigitSystemFont(ofSize: style.tuning.numberSize, weight: .medium) }
@@ -143,14 +165,23 @@ private final class CandidateView: NSView {
     override var intrinsicContentSize: NSSize { frame.size }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     func configure(_ snapshot: EngineSnapshot, style: AppearanceSettings, maxWidth: CGFloat, start: Int = 0) -> NSSize {
+        let oldStart = visibleRange.lowerBound
+        let wasExpanded = configuredExpanded
+        configuredExpanded = expanded
+        let keepSelection = expanded && self.snapshot?.preedit == snapshot.preedit
+        if !wasExpanded || !keepSelection {
+            scrollHideTask?.cancel()
+            scrollThumb.layer?.removeAllAnimations()
+            scrollThumb.alphaValue = 0
+        }
         self.snapshot = snapshot; self.style = style; pressed = nil
-        highlightedIndex = snapshot.highlighted
+        if !keepSelection { highlightedIndex = snapshot.highlighted }
         let tuning = style.tuning
         let padding = tuning.padding, gap = tuning.spacing
         let wordPadding = max(tuning.wordPadding, style.fontSize * 0.5)
         let numberWidth = tuning.showNumbers ? ceil(("1" as NSString).size(withAttributes: [.font: numberFont]).width) + 4 : 0
         let inset = wordPadding + numberWidth
-        let contentWidth = maxWidth - 29
+        let contentWidth = expanded ? maxWidth - 10 : maxWidth - 29
         let height = max(ceil(font.ascender - font.descender) + tuning.rowPadding * 2, style.fontSize * 1.5)
         let widths = snapshot.candidates.map { min(contentWidth - padding * 2, ceil(($0.text as NSString).size(withAttributes: [.font: font]).width) + inset + wordPadding) }
         boxes = []
@@ -165,7 +196,48 @@ private final class CandidateView: NSView {
         let first = starts.last(where: { $0 <= start }) ?? 0
         previousStart = starts.last(where: { $0 < first }) ?? 0
         let size: NSSize
-        if style.layout == .vertical {
+        if style.layout == .horizontal && expanded {
+            // Lay out one continuous list before choosing the visible rows.
+            // Wide phrases span columns; short words share aligned columns.
+            let cell = (contentWidth - padding * 2 + gap) / 6
+            var allBoxes: [NSRect] = []
+            var rowStarts = [0]
+            var column = 0
+            var row = 0
+            for (index, measuredWidth) in widths.enumerated() {
+                let span = min(6, max(1, Int(ceil((measuredWidth + gap) / cell))))
+                if column + span > 6 {
+                    row += 1; column = 0; rowStarts.append(index)
+                }
+                allBoxes.append(NSRect(x: padding + CGFloat(column) * cell,
+                                       y: padding + CGFloat(row) * (height + gap),
+                                       width: CGFloat(span) * cell - gap, height: height))
+                column += span
+            }
+            let availableHeight = ((window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 600) - 100
+            let maxRows = min(5, max(1, Int(availableHeight / (height + gap))))
+            let requestedRow = rowStarts.lastIndex(where: { $0 <= start }) ?? 0
+            let firstRow = min(requestedRow, max(0, rowStarts.count - maxRows))
+            let endRow = min(rowStarts.count, firstRow + maxRows)
+            let begin = rowStarts[firstRow]
+            let end = endRow < rowStarts.count ? rowStarts[endRow] : widths.count
+            let offset = CGFloat(firstRow) * (height + gap)
+            boxes = allBoxes[begin..<end].map { $0.offsetBy(dx: 0, dy: -offset) }
+            previousStart = rowStarts[max(0, firstRow - 1)]
+            nextStart = firstRow + 1 < rowStarts.count ? rowStarts[firstRow + 1] : begin
+            visibleRange = begin..<end
+            size = NSSize(width: maxWidth, height: padding * 2 + CGFloat(endRow - firstRow) * (height + gap) - gap)
+            let trackHeight = max(0, size.height - 16)
+            // The engine loads candidates incrementally, so its loaded count is not a total.
+            let thumbHeight = min(trackHeight, 28)
+            let progress = CGFloat(firstRow) / CGFloat(max(1, rowStarts.count - maxRows))
+            scrollThumb.frame = NSRect(x: maxWidth - 8, y: 8 + (trackHeight - thumbHeight) * progress,
+                                       width: 5, height: thumbHeight)
+            scrollThumb.layer?.backgroundColor = NSColor.secondaryLabelColor.withAlphaComponent(0.3).cgColor
+            if wasExpanded && keepSelection && oldStart != begin {
+                showScrollIndicator()
+            }
+        } else if style.layout == .vertical {
             let width = min(maxWidth - padding * 2, max(120, widths.max() ?? 120))
             for i in first..<widths.count { boxes.append(NSRect(x: padding, y: padding + CGFloat(i - first) * (height + gap), width: width, height: height)) }
             size = NSSize(width: width + padding * 2, height: padding * 2 + CGFloat(boxes.count) * height + CGFloat(max(0, boxes.count - 1)) * gap)
@@ -187,9 +259,12 @@ private final class CandidateView: NSView {
             size = NSSize(width: maxWidth, height: y + height + padding)
         }
         let visibleStart = first
-        visibleRange = visibleStart..<(visibleStart + boxes.count)
+        if !expanded || style.layout != .horizontal {
+            visibleRange = visibleStart..<(visibleStart + boxes.count)
+            nextStart = visibleRange.upperBound
+        }
         if !visibleRange.contains(highlightedIndex) { highlightedIndex = visibleRange.lowerBound }
-        toggleBox = style.layout == .horizontal ? NSRect(x: maxWidth - 28, y: padding, width: 26, height: height) : .zero
+        toggleBox = style.layout == .horizontal && !expanded ? NSRect(x: maxWidth - 28, y: padding, width: 26, height: height) : .zero
         // The panel owns its content size. Resizing here would jump to the
         // destination before the window animation starts.
         if !(window is CandidatePanel) { frame.size = size }
@@ -207,6 +282,20 @@ private final class CandidateView: NSView {
         setAccessibilityLabel(snapshot.candidates[visibleRange].map(\.text).joined(separator: "，"))
         artwork.needsDisplay = true
         return size
+    }
+    private func showScrollIndicator() {
+        scrollHideTask?.cancel()
+        scrollThumb.layer?.removeAllAnimations()
+        scrollThumb.alphaValue = 1
+        scrollHideTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 1_000_000_000) }
+            catch { return }
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.15
+                self.scrollThumb.animator().alphaValue = 0
+            } completionHandler: {}
+        }
     }
     private func drawCandidates(_ dirtyRect: NSRect) {
         let interval = Performance.input.beginInterval("DrawCandidates")
@@ -263,7 +352,7 @@ private final class CandidateView: NSView {
             let row = boxes[current].minY
             let candidates = boxes.indices.filter { keyCode == 125 ? boxes[$0].minY > row : boxes[$0].minY < row }
             let nextRow = keyCode == 125 ? candidates.map { boxes[$0].minY }.min() : candidates.map { boxes[$0].minY }.max()
-            target = candidates.filter { boxes[$0].minY == nextRow }.min { abs(boxes[$0].midX - boxes[current].midX) < abs(boxes[$1].midX - boxes[current].midX) }
+            target = candidates.filter { boxes[$0].minY == nextRow }.min { abs(boxes[$0].minX - boxes[current].minX) < abs(boxes[$1].minX - boxes[current].minX) }
         default: return false
         }
         guard let target else { return false }

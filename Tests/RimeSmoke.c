@@ -32,6 +32,13 @@ int main(int argc, char **argv) {
   if (strcmp(normal_list.candidates[0].text, expanded_list.candidates[0].text)) return 13;
   if (!vt_rime_expanded_snapshot(expanded, 9, 36, &offset_list) || !offset_list.count ||
       strcmp(offset_list.candidates[0].text, expanded_list.candidates[9].text)) return 14;
+  VTSnapshot continuous_list = {0};
+  if (!vt_rime_expanded_snapshot(expanded, 0, 108, &continuous_list) ||
+      continuous_list.count <= 36) return 17;
+  for (int i = 0; i < expanded_list.count; i++) {
+    if (strcmp(expanded_list.candidates[i].text, continuous_list.candidates[i].text)) return 18;
+  }
+  vt_rime_free_snapshot(&continuous_list);
   char *expected = strdup(expanded_list.candidates[9].text);
   if (!vt_rime_select_global(expanded, 9)) return 15;
   char *chosen = vt_rime_take_commit(expanded);

@@ -10,7 +10,6 @@ final class InputController: IMKInputController {
     private var preedit = ""
     private var active = false
     private var candidateStart = 0
-    private var expandedOffset = 0
     private var currentSnapshot: EngineSnapshot?
     private let replacement = NSRange(location: NSNotFound, length: 0)
 
@@ -68,9 +67,15 @@ final class InputController: IMKInputController {
                 if event.keyCode == 53 { toggleCandidates(); return true }
                 if [UInt16(123), 124, 125, 126].contains(event.keyCode) {
                     if !panel.moveSelection(event.keyCode) {
-                        if event.keyCode == 126 && candidateStart == 0 && expandedOffset == 0 { toggleCandidates() }
-                        else if event.keyCode == 125 { changePage(false) }
-                        else if event.keyCode == 126 { changePage(true) }
+                        if event.keyCode == 126 && candidateStart == 0 { toggleCandidates() }
+                        else if event.keyCode == 125 {
+                            changePage(false); _ = panel.moveSelection(event.keyCode)
+                        } else if event.keyCode == 126 {
+                            changePage(true); _ = panel.moveSelection(event.keyCode)
+                        }
+                    }
+                    if event.keyCode == 126 && panel.needsPreviousRow {
+                        changePage(true)
                     }
                     return true
                 }
@@ -90,7 +95,7 @@ final class InputController: IMKInputController {
             }
         }
         if runtime.candidates.isExpanded {
-            runtime.candidates.setExpanded(false); candidateStart = 0; expandedOffset = 0
+            runtime.candidates.setExpanded(false); candidateStart = 0
         }
         guard let key = Self.rimeKey(event) else { return false }
         var modifiers: Int32 = 0
@@ -120,28 +125,31 @@ final class InputController: IMKInputController {
     func choose(_ index: Int) {
         guard active, let session else { return }
         let panel = AppRuntime.shared.candidates
-        let selected = panel.isExpanded ? session.selectGlobal(expandedOffset + index) : session.select(index)
+        let selected = panel.isExpanded ? session.selectGlobal(index) : session.select(index)
         guard selected else { return }
-        panel.setExpanded(false); candidateStart = 0; expandedOffset = 0
+        panel.setExpanded(false); candidateStart = 0
         refresh()
     }
     func toggleCandidates() {
         let panel = AppRuntime.shared.candidates
         panel.setExpanded(!panel.isExpanded)
-        candidateStart = 0; expandedOffset = 0
+        candidateStart = 0
         refresh(preservePage: true)
     }
     func changePage(_ backward: Bool) {
         guard active, let snapshot = currentSnapshot else { return }
         let panel = AppRuntime.shared.candidates
         let range = panel.visibleRange
+        if panel.isExpanded {
+            candidateStart = backward ? panel.previousStart : panel.nextStart
+            refresh(preservePage: true)
+            return
+        }
         if backward && range.lowerBound > 0 { candidateStart = panel.previousStart }
         else if !backward && range.upperBound < snapshot.candidates.count { candidateStart = range.upperBound }
         else {
             guard backward ? snapshot.page > 0 : !snapshot.lastPage else { return }
-            if panel.isExpanded {
-                expandedOffset = max(0, expandedOffset + (backward ? -36 : 36))
-            } else { session?.page(backward: backward) }
+            session?.page(backward: backward)
             candidateStart = backward ? Int.max : 0
         }
         refresh(preservePage: true)
@@ -201,7 +209,8 @@ final class InputController: IMKInputController {
     private func refresh(preservePage: Bool = false) {
         guard active, let session else { return }
         if let text = session.takeCommit() { commit(text) }
-        guard let snapshot = session.snapshot(expandedStart: AppRuntime.shared.candidates.isExpanded ? expandedOffset : nil) else { currentSnapshot = nil; candidateStart = 0; setPreedit("", caret: 0); hidePalettes(); return }
+        let expanded = AppRuntime.shared.candidates.isExpanded
+        guard let snapshot = session.snapshot(expandedStart: expanded ? 0 : nil, expandedLimit: expanded ? candidateStart + 72 : 36) else { currentSnapshot = nil; candidateStart = 0; setPreedit("", caret: 0); hidePalettes(); return }
         if !preservePage {
             if currentSnapshot?.preedit != snapshot.preedit || currentSnapshot?.page != snapshot.page { candidateStart = 0 }
             else if currentSnapshot?.highlighted != snapshot.highlighted { candidateStart = snapshot.highlighted }

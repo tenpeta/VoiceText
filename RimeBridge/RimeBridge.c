@@ -77,7 +77,7 @@ int vt_rime_snapshot(VTSessionID s, VTSnapshot *output) {
   api->free_context(&context); return 1;
 }
 int vt_rime_expanded_snapshot(VTSessionID s, int start, int limit, VTSnapshot *output) {
-  if (start < 0 || limit <= 0 || limit > 36 || !vt_rime_snapshot(s, output)) return 0;
+  if (start < 0 || limit <= 0 || !vt_rime_snapshot(s, output)) return 0;
   for (int i = 0; i < output->count; i++) {
     free(output->candidates[i].text); free(output->candidates[i].comment);
   }

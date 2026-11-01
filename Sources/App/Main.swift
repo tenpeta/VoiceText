@@ -29,7 +29,11 @@ enum VoiceTextApp {
         for (title, selector, key) in [("撤销", Selector(("undo:")), "z"), ("剪切", #selector(NSText.cut(_:)), "x"), ("复制", #selector(NSText.copy(_:)), "c"), ("粘贴", #selector(NSText.paste(_:)), "v"), ("全选", #selector(NSText.selectAll(_:)), "a")] {
             edit.submenu?.addItem(withTitle: title, action: selector, keyEquivalent: key)
         }
-        menu.addItem(edit); app.mainMenu = menu
+        menu.addItem(edit)
+        let window = NSMenuItem(title: "窗口", action: nil, keyEquivalent: "")
+        window.submenu = NSMenu(title: "窗口")
+        window.submenu?.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        menu.addItem(window); app.mainMenu = menu
         withExtendedLifetime((delegate, server)) { app.run() }
     }
 }

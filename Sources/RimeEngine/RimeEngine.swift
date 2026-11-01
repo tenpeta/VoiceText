@@ -78,9 +78,9 @@ final class RimeSession {
         guard let pointer = vt_rime_input(id) else { return "" }
         defer { vt_rime_free_string(pointer) }; return String(cString: pointer)
     }
-    func snapshot(expandedStart: Int? = nil) -> EngineSnapshot? {
+    func snapshot(expandedStart: Int? = nil, expandedLimit: Int = 36) -> EngineSnapshot? {
         var value = VTSnapshot()
-        let success = expandedStart.map { vt_rime_expanded_snapshot(id, Int32($0), 36, &value) }
+        let success = expandedStart.map { vt_rime_expanded_snapshot(id, Int32($0), Int32(clamping: expandedLimit), &value) }
             ?? vt_rime_snapshot(id, &value)
         guard success != 0 else { return nil }
         defer { vt_rime_free_snapshot(&value) }

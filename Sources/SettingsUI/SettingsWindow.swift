@@ -26,14 +26,6 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     var icon: String {
         switch self { case .input: return "keyboard"; case .appearance: return "paintpalette"; case .voice: return "waveform"; case .history: return "clock.arrow.circlepath" }
     }
-    var subtitle: String {
-        switch self {
-        case .input: return "流畅输入，从每一次按键开始。"
-        case .appearance: return "让候选窗口更适合你的习惯。"
-        case .voice: return "说完，识别，再一次性落字。"
-        case .history: return "每一次表达，都可以找回来。"
-        }
-    }
 }
 
 private struct SettingsRoot: View {
@@ -50,14 +42,12 @@ private struct SettingsRoot: View {
                 }.padding(.top, 20).padding(.horizontal, 18)
                 List(SettingsPage.allCases, selection: $page) { item in Label(item.rawValue, systemImage: item.icon).padding(.vertical, 5).tag(item) }
                     .listStyle(.sidebar)
-                Text("原生输入 · 云端识别\nv0.1.0").font(.caption).foregroundStyle(.tertiary).lineSpacing(5).padding(20)
+                Text("原生输入 · 云端识别").font(.caption).foregroundStyle(.tertiary).padding(20)
             }.frame(width: 190).background(.quaternary.opacity(0.25))
             Divider()
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text((page ?? .input).rawValue).font(.system(size: 27, weight: .semibold))
-                    Text((page ?? .input).subtitle).font(.callout).foregroundStyle(.secondary)
-                }.padding(.horizontal, 28).padding(.top, 28).padding(.bottom, 16)
+                Text((page ?? .input).rawValue).font(.system(size: 27, weight: .semibold))
+                    .padding(.horizontal, 28).padding(.top, 28).padding(.bottom, 16)
                 switch page ?? .input {
                 case .input: InputSettings(settings: settings, engine: engine)
                 case .appearance: AppearanceSettingsView(settings: settings)
@@ -184,9 +174,9 @@ private struct AppearanceSettingsView: View {
                     SliderRow(title: "字号", value: $settings.value.appearance.fontSize, range: 13...28)
                 }
             Section("实时预览") {
-                ScrollView([.horizontal, .vertical]) {
+                ScrollView(.horizontal) {
                     CandidatePreview(style: settings.value.appearance).fixedSize()
-                }.frame(height: settings.value.appearance.layout == .horizontal ? 72 : 145)
+                }.fixedSize(horizontal: false, vertical: true)
             }
         }.formStyle(.grouped)
     }
