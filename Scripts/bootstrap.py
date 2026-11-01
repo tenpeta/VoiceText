@@ -47,8 +47,11 @@ def main():
     for source in (VENDOR / "dist/include").glob("*.h"):
         shutil.copy2(source, VENDOR / "include" / source.name)
     library = VENDOR / "lib/librime.1.dylib"
-    # Ship only arm64 and no separately distributed plugins.
+    # Ship arm64 core and only the Lua plugin used by candidate ranking.
     subprocess.run(["lipo", str(VENDOR / "dist/lib/librime.1.17.0.dylib"), "-thin", "arm64", "-output", str(library)], check=True)
+    lua = VENDOR / "lib/librime-lua.dylib"
+    subprocess.run(["lipo", str(VENDOR / "dist/lib/rime-plugins/librime-lua.dylib"), "-thin", "arm64", "-output", str(lua)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", str(lua)], check=True)
     alias = VENDOR / "lib/librime.dylib"
     alias.unlink(missing_ok=True)
     alias.symlink_to("librime.1.dylib")
@@ -59,10 +62,13 @@ def main():
     subprocess.run(["codesign", "--force", "--sign", "-", str(VENDOR / "bin/rime_deployer")], check=True)
 
     resources = ROOT / "Resources/Rime/upstream"
+    (resources / "luna_pinyin.dict.yaml").unlink(missing_ok=True)
     notices = ROOT / "ThirdPartyNotices/upstream"
     manifest = []
     inputs = [
-        ("rime/rime-luna-pinyin", "56b934b099dfbeab842320f13aa8b461a6ab3e42", "luna_pinyin.dict.yaml", resources / "luna_pinyin.dict.yaml"),
+        ("lua/lua", "v5.4.8", "lua.h", notices / "Lua-5.4.8.LICENSE.h"),
+        ("hchunhui/librime-lua", "ec52e48", "LICENSE", notices / "librime-lua.LICENSE"),
+
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "essay.txt", resources / "essay.txt"),
         ("rime/rime-luna-pinyin", "56b934b099dfbeab842320f13aa8b461a6ab3e42", "LICENSE", notices / "luna-pinyin.LICENSE"),
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "LICENSE", notices / "essay.LICENSE"),
@@ -73,6 +79,17 @@ def main():
         ("BYVoid/OpenCC", "556ed22496d650bd0b13b6c163be9814637970ae", "LICENSE", notices / "OpenCC.LICENSE"),
         ("jbeder/yaml-cpp", "2f86d13775d119edbb69af52e5f566fd65c6953b", "LICENSE", notices / "yaml-cpp.LICENSE"),
     ]
+    frost_revision = "af22941caec0fb7c052893e1bf439b79a94e5fb2"
+    ice_revision = "99662ba01e3affa6a0f009174ca530b887bac3b6"
+    for name in ["8105", "base", "ext", "others"]:
+        path = f"cn_dicts/{name}.dict.yaml"
+        inputs.append(("gaboolic/rime-frost", frost_revision, path, resources / path))
+    for path in ["melt_eng.dict.yaml", "en_dicts/en.dict.yaml", "en_dicts/en_ext.dict.yaml"]:
+        inputs.append(("iDvel/rime-ice", ice_revision, path, resources / path))
+    inputs.extend([
+        ("gaboolic/rime-frost", frost_revision, "LICENSE", notices / "rime-frost.LICENSE"),
+        ("iDvel/rime-ice", ice_revision, "LICENSE", notices / "rime-ice.LICENSE"),
+    ])
     for repo, revision, path, destination in inputs:
         url = f"https://raw.githubusercontent.com/{repo}/{revision}/{path}"
         digest = download(url, destination)
@@ -81,12 +98,12 @@ def main():
     manifest.append(dict(source=gpl_url, sha256=download(gpl_url, notices / "GPL-3.0.txt")))
     opencc = resources / "opencc"
     opencc.mkdir(parents=True, exist_ok=True)
-    for name in ["t2s.json", "TSCharacters.ocd2", "TSPhrases.ocd2"]:
+    for name in ["t2s.json", "TSCharacters.ocd2", "TSPhrases.ocd2", "s2t.json", "STCharacters.ocd2", "STPhrases.ocd2"]:
         shutil.copy2(VENDOR / "deps/share/opencc" / name, opencc / name)
     notices.mkdir(parents=True, exist_ok=True)
     shutil.copy2(VENDOR / "deps/include/COPYING.darts-clone", notices / "darts-clone.LICENSE")
     (notices / "resources.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    complete.write_text("librime-1.17.0\n")
+    complete.write_text("librime-1.17.0-frost-lua-1\n")
     print("librime 1.17.0 and base dictionaries are ready.")
 
 if __name__ == "__main__":

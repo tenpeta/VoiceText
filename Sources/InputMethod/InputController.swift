@@ -116,7 +116,8 @@ final class InputController: IMKInputController {
     }
     private func applyOptions() {
         let runtime = AppRuntime.shared
-        session?.set("simplification", runtime.settings.value.simplified)
+        session?.set("normalize_chinese", true)
+        session?.set("traditionalization", !runtime.settings.value.simplified)
         session?.set("ascii_punct", runtime.settings.value.asciiPunctuation)
         session?.set("ascii_mode", runtime.asciiMode)
         session?.set("_linear", runtime.settings.value.appearance.layout == .horizontal)

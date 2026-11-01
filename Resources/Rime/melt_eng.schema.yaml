@@ -1,0 +1,15 @@
+# Minimal native schema for compiling the auxiliary English dictionary.
+schema:
+  schema_id: melt_eng
+  name: English
+  version: "1.0"
+engine:
+  processors: [speller, selector, express_editor]
+  segmentors: [abc_segmentor]
+  translators: [table_translator]
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+translator:
+  dictionary: melt_eng
+  enable_sentence: false
+  enable_user_dict: false

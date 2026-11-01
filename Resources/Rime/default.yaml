@@ -6,4 +6,4 @@ menu:
 switcher:
   caption: VoiceText
   hotkeys: []
-  save_options: [simplification]
+  save_options: [traditionalization]

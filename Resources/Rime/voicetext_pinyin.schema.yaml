@@ -1,15 +1,18 @@
-# VoiceText base full-pinyin configuration. Dictionary: upstream rime-luna-pinyin.
+# VoiceText full-pinyin: selected rime-frost tables and native English translation.
 schema:
   schema_id: voicetext_pinyin
   name: VoiceText 全拼
-  version: '1.0'
+  version: '1.4'
+  dependencies: [melt_eng]
 switches:
+  - name: normalize_chinese
+    reset: 1
   - name: ascii_mode
     reset: 0
     states: [中文, English]
-  - name: simplification
-    reset: 1
-    states: [繁體, 简体]
+  - name: traditionalization
+    reset: 0
+    states: [简体, 繁體]
   - name: full_shape
     reset: 0
     states: [半角, 全角]
@@ -18,22 +21,48 @@ switches:
 engine:
   processors: [ascii_composer, recognizer, key_binder, speller, punctuator, selector, navigator, express_editor]
   segmentors: [ascii_segmentor, matcher, abc_segmentor, punct_segmentor, fallback_segmentor]
-  translators: [punct_translator, script_translator]
-  filters: [simplifier, uniquifier]
+  translators: [punct_translator, script_translator, table_translator@melt_eng]
+  filters: [lua_filter@*candidate_rank, simplifier@normalize_chinese, simplifier, uniquifier]
 speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   delimiter: " '"
   algebra:
+    # Common adjacent-key transpositions, applied to full syllables before abbreviations.
+    - fuzz/^([zcs])h/h$1/
+    - fuzz/([iu])a/a$1/
+    - fuzz/([iu])o/o$1/
+    - fuzz/([iu])e/e$1/
+    - fuzz/([aeio])ng$/$1gn/
+    - fuzz/^([bpmfdtnlgkhzcsry]*)ai$/$1ia/
+    - fuzz/^([bpmfdtnlgkhzcsry]*)ei$/$1ie/
+    - fuzz/^([bpmfdtnlgkhzcsry]*)ou$/$1uo/
     - abbrev/^([a-z]).+$/$1/
     - abbrev/^([zcs]h).+$/$1/
 translator:
-  dictionary: luna_pinyin
+  dictionary: voicetext_frost
+  user_dict: dict_pinyin
+  initial_quality: 1.2
+  spelling_hints: 64
+  always_show_comments: true
   enable_user_dict: true
   preedit_format:
     - xform/v/ü/
-simplifier:
-  option_name: simplification
+melt_eng:
+  dictionary: melt_eng
+  enable_sentence: false
+  enable_user_dict: false
+  enable_completion: false
+  initial_quality: 2
+  tag: abc
+  comment_format:
+    - xform/.*//
+normalize_chinese:
+  option_name: normalize_chinese
   opencc_config: t2s.json
+  tips: none
+simplifier:
+  option_name: traditionalization
+  opencc_config: s2t.json
   tips: none
 ascii_composer:
   switch_key:

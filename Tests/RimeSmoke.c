@@ -6,12 +6,49 @@
 #define VT_SMOKE_ITERATIONS 1000
 #endif
 
+static int check_candidates(const char *input, const char *expected, const char *after, int first) {
+  VTSessionID session = vt_rime_session();
+  vt_rime_option(session, "traditionalization", 0);
+  for (const char *key = input; *key; key++) vt_rime_key(session, *key, 0);
+  VTSnapshot list = {0};
+  vt_rime_expanded_snapshot(session, 0, 100, &list);
+  int found = -1, later = -1;
+  printf("%s:", input);
+  for (int i = 0; i < list.count; i++) {
+    if (i < 8) printf(" %s", list.candidates[i].text);
+    if (!strcmp(list.candidates[i].text, expected)) found = i;
+    if (after && !strcmp(list.candidates[i].text, after)) later = i;
+  }
+  printf("\n");
+  vt_rime_free_snapshot(&list);
+  vt_rime_destroy(session);
+  return found >= 0 && (!first || found == 0) && (!after || later > found);
+}
+
 int main(int argc, char **argv) {
   if (argc != 4 || !vt_rime_start(argv[1], argv[2], argv[3])) return 1;
+  if (!check_candidates("xiangmu", "项目", NULL, 0) ||
+      !check_candidates("xaingmu", "项目", NULL, 0) ||
+      !check_candidates("kuai", "快", NULL, 0) ||
+      !check_candidates("kaui", "快", NULL, 0) ||
+      !check_candidates("hsi", "是", NULL, 0) ||
+      !check_candidates("hci", "吃", NULL, 0) ||
+      !check_candidates("hate", "哈特", "hate", 0) ||
+      !check_candidates("hello", "hello", NULL, 1) ||
+      !check_candidates("world", "world", NULL, 1) ||
+      !check_candidates("shagnhai", "上海", NULL, 0) ||
+      !check_candidates("pegn", "朋", NULL, 0) ||
+      !check_candidates("zhognwen", "中文", NULL, 0) ||
+      !check_candidates("yign", "应", NULL, 0) ||
+      !check_candidates("shou", "手", "说", 0) ||
+      !check_candidates("shuo", "说", "手", 0) ||
+      !check_candidates("lei", "类", "列", 0) ||
+      !check_candidates("lie", "列", "类", 0) ||
+      !check_candidates("shujuku", "数据库", NULL, 0)) return 19;
   for (int iteration = 0; iteration < VT_SMOKE_ITERATIONS; iteration++) {
     VTSessionID session = vt_rime_session();
     if (!session) return 2;
-    vt_rime_option(session, "simplification", 1);
+    vt_rime_option(session, "traditionalization", 0);
     const char *pinyin = "nihao";
     for (const char *key = pinyin; *key; key++) vt_rime_key(session, *key, 0);
     VTSnapshot snapshot = {0};
@@ -24,7 +61,7 @@ int main(int argc, char **argv) {
     vt_rime_free_string(commit); vt_rime_destroy(session);
   }
   VTSessionID expanded = vt_rime_session();
-  vt_rime_option(expanded, "simplification", 1);
+  vt_rime_option(expanded, "traditionalization", 0);
   for (const char *key = "shi"; *key; key++) vt_rime_key(expanded, *key, 0);
   VTSnapshot expanded_list = {0}, normal_list = {0}, offset_list = {0};
   if (!vt_rime_snapshot(expanded, &normal_list) || !normal_list.count) return 11;
@@ -56,8 +93,8 @@ int main(int argc, char **argv) {
   VTSessionID traditional = vt_rime_session();
   VTSessionID simplified = vt_rime_session();
   if (!traditional || !simplified) return 6;
-  vt_rime_option(traditional, "simplification", 0);
-  vt_rime_option(simplified, "simplification", 1);
+  vt_rime_option(traditional, "traditionalization", 1);
+  vt_rime_option(simplified, "traditionalization", 0);
   for (const char *key = "hanyu"; *key; key++) {
     vt_rime_key(traditional, *key, 0); vt_rime_key(simplified, *key, 0);
   }
@@ -65,6 +102,13 @@ int main(int argc, char **argv) {
   if (!vt_rime_snapshot(traditional, &t) || !vt_rime_snapshot(simplified, &s)) return 7;
   if (!t.count || !s.count || strcmp(t.candidates[0].text, "漢語") || strcmp(s.candidates[0].text, "汉语")) return 8;
   vt_rime_free_snapshot(&t); vt_rime_free_snapshot(&s);
+  // Converted and original forms must not coexist after normalization/deduplication.
+  VTSnapshot normalized = {0};
+  vt_rime_expanded_snapshot(simplified, 0, 100, &normalized);
+  for (int i = 0; i < normalized.count; i++) {
+    if (strstr(normalized.candidates[i].text, "漢")) return 20;
+  }
+  vt_rime_free_snapshot(&normalized);
   if (!vt_rime_key(simplified, 0xff54, 0) || !vt_rime_snapshot(simplified, &s) || s.highlighted != 1) return 9;
   vt_rime_free_snapshot(&s);
   vt_rime_destroy(traditional); vt_rime_destroy(simplified);

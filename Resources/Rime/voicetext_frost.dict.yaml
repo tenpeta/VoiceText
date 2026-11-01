@@ -1,0 +1,11 @@
+# Selected rime-frost tables; see ThirdPartyNotices for pinned sources and licenses.
+---
+name: voicetext_frost
+version: "1.0"
+sort: by_weight
+import_tables:
+  - cn_dicts/8105
+  - cn_dicts/base
+  - cn_dicts/ext
+  - cn_dicts/others
+...

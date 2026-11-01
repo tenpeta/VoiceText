@@ -9,7 +9,9 @@ fi
 if [ ! -d "$app" ]; then bash Scripts/build.sh; fi
 mkdir -p build/Distribution
 if [ -n "${SIGNING_IDENTITY:-}" ]; then
-    codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$app/Contents/Frameworks/librime.1.dylib"
+    for library in "$app"/Contents/Frameworks/*.dylib; do
+        codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$library"
+    done
     codesign --force --timestamp --options runtime --entitlements Resources/VoiceText.entitlements --sign "$SIGNING_IDENTITY" "$app"
 fi
 codesign --verify --deep --strict "$app"

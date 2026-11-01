@@ -34,14 +34,16 @@ def main():
         packaged_refs.append(ref)
         resource_builds.append(obj("resource:" + path, f'isa = PBXBuildFile; fileRef = {ref};'))
     lib = obj("librime", 'isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = Vendor/lib/librime.1.dylib; sourceTree = SOURCE_ROOT;')
+    lua_lib = obj("lualib", 'isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = Vendor/lib/librime-lua.dylib; sourceTree = SOURCE_ROOT;')
     product = obj("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = VoiceText.app; sourceTree = BUILT_PRODUCTS_DIR;')
     code = obj("codegroup", f'isa = PBXGroup; name = Sources; children = {array(source_refs)}; sourceTree = "<group>";')
     products = obj("products", f'isa = PBXGroup; name = Products; children = ({product}); sourceTree = "<group>";')
-    group = obj("rootgroup", f'isa = PBXGroup; children = {array([code] + resource_refs + packaged_refs + [lib, products])}; sourceTree = "<group>";')
+    group = obj("rootgroup", f'isa = PBXGroup; children = {array([code] + resource_refs + packaged_refs + [lib, lua_lib, products])}; sourceTree = "<group>";')
     sources = obj("sourcesphase", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = {array(build_sources)}; runOnlyForDeploymentPostprocessing = 0;')
     frameworks = obj("frameworksphase", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
     embed_ref = obj("embedlib", f'isa = PBXBuildFile; fileRef = {lib}; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);}};')
-    embed = obj("embedphase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = ({embed_ref}); name = "Embed librime"; runOnlyForDeploymentPostprocessing = 0;')
+    lua_embed = obj("embedlua", f'isa = PBXBuildFile; fileRef = {lua_lib}; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);}};')
+    embed = obj("embedphase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = ({embed_ref}, {lua_embed}); name = "Embed librime"; runOnlyForDeploymentPostprocessing = 0;')
     resources = obj("resourcesphase", f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = {array(resource_builds)}; runOnlyForDeploymentPostprocessing = 0;')
     # Ad hoc signatures have no Team ID and cannot satisfy hardened library validation.
     # Developer ID distribution enables the runtime in package.sh and signs both binaries.

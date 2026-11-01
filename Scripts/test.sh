@@ -6,7 +6,7 @@ export CLANG_MODULE_CACHE_PATH="$PWD/build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/build/ModuleCache"
 swift test --disable-sandbox --scratch-path build/SwiftPM --cache-path build/PackageCache \
     --config-path build/PackageConfig --security-path build/PackageSecurity
-if [ ! -f Vendor/.bootstrap-complete ] || [ ! -f Vendor/lib/librime.1.dylib ]; then python3 Scripts/bootstrap.py; fi
+if [ "$(cat Vendor/.bootstrap-complete 2>/dev/null)" != "librime-1.17.0-frost-lua-1" ] || [ ! -f Vendor/lib/librime.1.dylib ]; then python3 Scripts/bootstrap.py; fi
 python3 Scripts/prepare_resources.py
 mkdir -p build/RimeSmoke/User build/RimeSmoke/Logs
 xcrun clang -std=gnu11 -I RimeBridge -I Vendor/include RimeBridge/RimeBridge.c Tests/RimeSmoke.c \

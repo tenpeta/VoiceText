@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ ! -f Vendor/.bootstrap-complete ] || [ ! -f Vendor/lib/librime.1.dylib ] || [ ! -f Resources/Rime/upstream/essay.txt ]; then
+if [ "$(cat Vendor/.bootstrap-complete 2>/dev/null)" != "librime-1.17.0-frost-lua-1" ] || [ ! -f Vendor/lib/librime.1.dylib ] || [ ! -f Resources/Rime/upstream/essay.txt ]; then
     python3 Scripts/bootstrap.py
 fi
 python3 Scripts/generate_project.py

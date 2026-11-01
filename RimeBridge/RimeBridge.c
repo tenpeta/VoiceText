@@ -1,6 +1,7 @@
 #include "RimeBridge.h"
 #include <rime_api.h>
 #include <stdlib.h>
+#include <dlfcn.h>
 #include <string.h>
 
 static RimeApi *api;
@@ -16,8 +17,15 @@ int vt_rime_start(const char *shared, const char *user, const char *logs) {
   traits.shared_data_dir = shared_path; traits.user_data_dir = user_path;
   traits.log_dir = log_path; traits.app_name = "voicetext";
   traits.distribution_name = "VoiceText"; traits.distribution_code_name = "voicetext";
-  traits.distribution_version = "0.1.0"; traits.min_log_level = 2;
-  api->setup(&traits); api->initialize(NULL); running = 1;
+  traits.distribution_version = "0.3.0"; traits.min_log_level = 2;
+  static const char *modules[] = {"default", "lua", NULL};
+  traits.modules = modules;
+  api->setup(&traits);
+  // Keep the module loaded for the process lifetime: it registers callbacks with Rime.
+  static void *lua_module;
+  if (!lua_module) lua_module = dlopen("@rpath/librime-lua.dylib", RTLD_NOW | RTLD_GLOBAL);
+  if (!lua_module) { vt_rime_finalize(); return 0; }
+  api->initialize(&traits); running = 1;
   // Called on a dedicated initialization queue before any session is exposed.
   if (api->start_maintenance(False)) api->join_maintenance_thread();
   return 1;
