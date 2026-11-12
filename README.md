@@ -2,18 +2,16 @@
 
 VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云端语音听写。使用 Swift、InputMethodKit 和 AppKit 开发。
 
-**项目目前处于开发阶段**，尚未完成日常使用的兼容性验收。安装后请保留系统自带的 ABC 输入法，以便遇到问题时切换。
-
 ## 功能
 
-- **中文输入**：全拼、连续词句候选、词频学习、简繁转换和中英文标点；支持常见拼写错序纠正。
+- **中文输入**：支持白霜方案中的全拼、简拼、`u/v` 兼容和手滑纠错。连续输入可生成最多 3 条整句候选，支持词频学习、简繁转换和中英文标点。
 - **候选窗口**：支持横排或竖排、浅色或深色，以及字体、字号、圆角和间距设置；可展开多行候选。
 - **中英文切换**：轻按左侧或右侧 Shift；用 Shift 输入大写或组合键时不会切换。
 - **语音听写**：支持豆包、OpenAI 和千问 ASR，默认轻按右 Option 开始，再按一次结束，Esc 取消；快捷键可更改。
 - **文本整理**：可选地用单独配置的文本模型整理转写结果，默认关闭；整理失败时保留原始转写。
 - **语音历史**：在本机保存原始转写和最终文本，支持复制、删除和清空。
 
-中文词库使用固定版本的白霜精选词库，英文候选使用 `melt_eng`。候选排序会优先显示完整拼音匹配的中文，其次是完整英文；不提供英文语义识别或预测。
+中文词库选用白霜的 `8105`、`base`、`ext` 和 `others`，整句候选使用随包提供的 `zh-moqi` 模型。中文模式下可直接选择 `melt_eng` 提供的英文单词。中文和英文候选的初始权重分别为 1.2 和 0.7。降权名单中的英文候选排得过靠前时会按白霜规则后移。
 
 ## 环境要求
 
@@ -31,7 +29,7 @@ VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云
 bash Scripts/build.sh
 ```
 
-首次构建会下载固定版本的 librime、词库及其他资源，并准备 Xcode 工程。librime 发布包会校验 SHA-256。构建完成后，应用位于：
+首次构建会下载固定版本的 librime、词库、`zh-moqi` 模型和英文降权脚本，并准备 Xcode 工程。librime 发布包、模型和英文降权脚本均校验 SHA-256。默认构建使用 Release 配置，应用输出到以下路径。
 
 ```text
 build/DerivedData/Build/Products/Release/VoiceText.app
@@ -41,7 +39,7 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 
 如果系统设置中没有出现 VoiceText，请关闭并重新打开系统设置；仍未出现时，重新登录 macOS 后再试。注册成功后仍需手动添加、切换并测试输入法。
 
-更新已安装的版本请使用 `Scripts/install.sh`：脚本会先切换到 ABC，退出旧实例并备份旧应用，再替换和注册。用户词典和历史会保留。卸载时先切换到 ABC、退出 VoiceText，从系统设置中移除输入源，再将安装的应用移到废纸篓；用户数据和本地密钥默认保留。
+更新已安装的版本请使用 `Scripts/install.sh`：当前输入源是 VoiceText 时，脚本会先切换到 ABC。随后退出旧实例并备份旧应用，再替换和注册。用户词典和历史会保留。卸载时先切换到 ABC、退出 VoiceText，从系统设置中移除输入源，再将安装的应用移到废纸篓；用户数据和本地密钥默认保留。
 
 也可直接打开已提交的 `VoiceText.xcodeproj`。首次在 Xcode 中构建前，先运行 `python3 Scripts/bootstrap.py` 和 `python3 Scripts/prepare_resources.py`。增加源文件后运行 `python3 Scripts/generate_project.py` 更新工程。
 
@@ -63,7 +61,7 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 
 - **音频与文本**：音频发送至用户配置的 ASR 服务；启用文本整理时，识别文本也会发送至配置的文本服务。文件型 ASR 的临时音频在完成、取消或失败后删除；应用启动时也会清理遗留临时文件。
 - **密钥**：保存在 `~/Library/Application Support/VoiceText/Credentials/credentials.json`，目录权限为 0700、文件权限为 0600；不使用钥匙串加密。请勿将密钥提交到仓库。
-- **词典和历史**：分别保存在 `~/Library/Application Support/VoiceText/Rime` 和同一目录下的 `history.sqlite`。历史长期保留，直到用户手动删除。
+- **词典和历史**：分别保存在 `~/Library/Application Support/VoiceText/Rime` 和 `~/Library/Application Support/VoiceText/history.sqlite`。历史长期保留，直到用户手动删除。
 - **权限**：语音功能需要麦克风权限；应用不申请辅助功能、屏幕录制或输入监控权限，不记录键盘输入正文、API 请求正文或鉴权头。
 
 ## 测试与发布
@@ -80,8 +78,8 @@ bash Scripts/test.sh
 SIGNING_IDENTITY='Developer ID Application: …' NOTARY_PROFILE='your-profile' bash Scripts/package.sh
 ```
 
-未配置签名和公证时，打包脚本生成的 ZIP 仅供开发测试。
+打包脚本生成 `build/Distribution/VoiceText.zip`。未配置 Developer ID 签名和公证时，ZIP 仅供开发测试。
 
 ## 第三方组件与许可证
 
-项目使用 librime、librime-lua、白霜和 `melt_eng` 等组件与资源。其来源、版本和许可证见 [ThirdPartyNotices/README.md](ThirdPartyNotices/README.md)。构建脚本会下载对应的上游资源及许可证；分发应用时应保留适用的许可声明。
+项目使用 librime、librime-lua、librime-octagram、白霜和 `melt_eng` 等组件与资源。白霜全拼规则、英文降权脚本和 `zh-moqi` 模型固定于上游提交 `af22941`。构建脚本会下载对应的上游资源及许可证。各组件的来源、版本和许可证见[第三方组件与资源声明](ThirdPartyNotices/README.md)。

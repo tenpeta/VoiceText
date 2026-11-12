@@ -35,18 +35,20 @@ def main():
         resource_builds.append(obj("resource:" + path, f'isa = PBXBuildFile; fileRef = {ref};'))
     lib = obj("librime", 'isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = Vendor/lib/librime.1.dylib; sourceTree = SOURCE_ROOT;')
     lua_lib = obj("lualib", 'isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = Vendor/lib/librime-lua.dylib; sourceTree = SOURCE_ROOT;')
+    octagram_lib = obj("octagramlib", 'isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = Vendor/lib/librime-octagram.dylib; sourceTree = SOURCE_ROOT;')
     product = obj("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = VoiceText.app; sourceTree = BUILT_PRODUCTS_DIR;')
     code = obj("codegroup", f'isa = PBXGroup; name = Sources; children = {array(source_refs)}; sourceTree = "<group>";')
     products = obj("products", f'isa = PBXGroup; name = Products; children = ({product}); sourceTree = "<group>";')
-    group = obj("rootgroup", f'isa = PBXGroup; children = {array([code] + resource_refs + packaged_refs + [lib, lua_lib, products])}; sourceTree = "<group>";')
+    group = obj("rootgroup", f'isa = PBXGroup; children = {array([code] + resource_refs + packaged_refs + [lib, lua_lib, octagram_lib, products])}; sourceTree = "<group>";')
     sources = obj("sourcesphase", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = {array(build_sources)}; runOnlyForDeploymentPostprocessing = 0;')
     frameworks = obj("frameworksphase", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
     embed_ref = obj("embedlib", f'isa = PBXBuildFile; fileRef = {lib}; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);}};')
     lua_embed = obj("embedlua", f'isa = PBXBuildFile; fileRef = {lua_lib}; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);}};')
-    embed = obj("embedphase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = ({embed_ref}, {lua_embed}); name = "Embed librime"; runOnlyForDeploymentPostprocessing = 0;')
+    octagram_embed = obj("embedoctagram", f'isa = PBXBuildFile; fileRef = {octagram_lib}; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);}};')
+    embed = obj("embedphase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = ({embed_ref}, {lua_embed}, {octagram_embed}); name = "Embed librime"; runOnlyForDeploymentPostprocessing = 0;')
     resources = obj("resourcesphase", f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = {array(resource_builds)}; runOnlyForDeploymentPostprocessing = 0;')
     # Ad hoc signatures have no Team ID and cannot satisfy hardened library validation.
-    # Developer ID distribution enables the runtime in package.sh and signs both binaries.
+    # Developer ID distribution enables the runtime in package.sh and signs the bundled libraries.
     common = dict(ARCHS="arm64", MACOSX_DEPLOYMENT_TARGET="14.0", SDKROOT="macosx", SWIFT_VERSION="5.0", CLANG_ENABLE_MODULES="YES", CLANG_ENABLE_OBJC_ARC="YES", ENABLE_USER_SCRIPT_SANDBOXING="NO", ENABLE_HARDENED_RUNTIME="NO", CODE_SIGN_STYLE="Manual", CODE_SIGN_IDENTITY="-", CODE_SIGN_ENTITLEMENTS="Resources/VoiceText.entitlements", PRODUCT_BUNDLE_IDENTIFIER="im.voicetext.inputmethod.VoiceText", PRODUCT_NAME="VoiceText", INFOPLIST_FILE="Resources/Info.plist", GENERATE_INFOPLIST_FILE="NO", SWIFT_OBJC_BRIDGING_HEADER="RimeBridge/VoiceText-Bridging-Header.h", HEADER_SEARCH_PATHS="$(SRCROOT)/Vendor/include $(SRCROOT)/RimeBridge $(SRCROOT)/NativeSupport/include", LIBRARY_SEARCH_PATHS="$(SRCROOT)/Vendor/lib", OTHER_LDFLAGS="$(inherited) -lrime -lc++ -lz -lsqlite3", SWIFT_INCLUDE_PATHS="$(SRCROOT)/NativeSupport/include", LD_RUNPATH_SEARCH_PATHS="$(inherited) @executable_path/../Frameworks", COMBINE_HIDPI_IMAGES="YES")
     configs = []
     for name in ["Debug", "Release"]:

@@ -18,16 +18,27 @@ int vt_rime_start(const char *shared, const char *user, const char *logs) {
   traits.log_dir = log_path; traits.app_name = "voicetext";
   traits.distribution_name = "VoiceText"; traits.distribution_code_name = "voicetext";
   traits.distribution_version = "0.3.0"; traits.min_log_level = 2;
-  static const char *modules[] = {"default", "lua", NULL};
+  static const char *modules[] = {"default", "lua", "octagram", NULL};
   traits.modules = modules;
   api->setup(&traits);
   // Keep the module loaded for the process lifetime: it registers callbacks with Rime.
-  static void *lua_module;
+  static void *lua_module, *octagram_module;
   if (!lua_module) lua_module = dlopen("@rpath/librime-lua.dylib", RTLD_NOW | RTLD_GLOBAL);
-  if (!lua_module) { vt_rime_finalize(); return 0; }
+  if (!octagram_module) octagram_module = dlopen("@rpath/librime-octagram.dylib", RTLD_NOW | RTLD_GLOBAL);
+  if (!lua_module || !octagram_module) { vt_rime_finalize(); return 0; }
   api->initialize(&traits); running = 1;
+  // A newly installed bundle can have older timestamps than the cached schema.
+  RimeConfig schema = {0};
+  Bool full_check = False;
+  if (api->schema_open("voicetext_pinyin", &schema)) {
+    char version[32];
+    if (api->config_get_string(&schema, "schema/version", version, sizeof(version))) {
+      full_check = !strcmp(version, "1.0") || !strcmp(version, "1.4");
+    }
+    api->config_close(&schema);
+  }
   // Called on a dedicated initialization queue before any session is exposed.
-  if (api->start_maintenance(False)) api->join_maintenance_thread();
+  if (api->start_maintenance(full_check)) api->join_maintenance_thread();
   return 1;
 }
 void vt_rime_finalize(void) {

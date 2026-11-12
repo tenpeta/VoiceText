@@ -25,12 +25,64 @@ static int check_candidates(const char *input, const char *expected, const char 
   return found >= 0 && (!first || found == 0) && (!after || later > found);
 }
 
+// A partial candidate from the initial "x" may remain, but must leave "ai" uncommitted.
+static int check_xai(void) {
+  VTSessionID session = vt_rime_session();
+  for (const char *key = "xai"; *key; key++) vt_rime_key(session, *key, 0);
+  VTSnapshot list = {0};
+  int ok = vt_rime_expanded_snapshot(session, 0, 100, &list) && list.count &&
+           !strcmp(list.candidates[0].text, "喜爱");
+  for (int i = 0; ok && i < list.count; i++) {
+    if (strcmp(list.candidates[i].text, "下")) continue;
+    int selected = vt_rime_select_global(session, i);
+    char *commit = vt_rime_take_commit(session);
+    VTSnapshot remaining = {0};
+    ok = selected && !commit && vt_rime_snapshot(session, &remaining) &&
+         !strcmp(remaining.preedit, "下ai");
+    vt_rime_free_snapshot(&remaining);
+    vt_rime_free_string(commit);
+    break;
+  }
+  vt_rime_free_snapshot(&list);
+  vt_rime_destroy(session);
+  return ok;
+}
+
+static int check_ascii_mode(void) {
+  VTSessionID session = vt_rime_session();
+  if (!session) return 0;
+  for (const char *key = "hello"; *key; key++) vt_rime_key(session, *key, 0);
+  int selected = vt_rime_select(session, 0);
+  char *commit = vt_rime_take_commit(session);
+  int ok = selected && commit && !strcmp(commit, "hello");
+  vt_rime_free_string(commit);
+  vt_rime_option(session, "ascii_mode", 1);
+  for (const char *key = "hello"; *key; key++) {
+    if (vt_rime_key(session, *key, 0)) ok = 0;
+  }
+  char *input = vt_rime_input(session);
+  ok = ok && input && !*input;
+  vt_rime_free_string(input);
+  vt_rime_destroy(session);
+  return ok;
+}
+
 int main(int argc, char **argv) {
   if (argc != 4 || !vt_rime_start(argv[1], argv[2], argv[3])) return 1;
   if (!check_candidates("xiangmu", "项目", NULL, 0) ||
       !check_candidates("xaingmu", "项目", NULL, 0) ||
       !check_candidates("kuai", "快", NULL, 0) ||
       !check_candidates("kaui", "快", NULL, 0) ||
+      !check_candidates("xm", "项目", NULL, 0) ||
+      !check_candidates("ch'sh", "城市", NULL, 0) ||
+      !check_candidates("qv", "去", NULL, 0) ||
+      !check_candidates("nue", "虐", NULL, 0) ||
+      !check_candidates("hzi", "知", NULL, 0) ||
+      !check_candidates("zih", "知", NULL, 0) ||
+      !check_candidates("pign", "平", NULL, 0) ||
+      !check_candidates("pnig", "平", NULL, 0) ||
+      !check_candidates("lng", "冷", NULL, 0) ||
+      !check_xai() ||
       !check_candidates("hsi", "是", NULL, 0) ||
       !check_candidates("hci", "吃", NULL, 0) ||
       !check_candidates("hate", "哈特", "hate", 0) ||
@@ -40,11 +92,11 @@ int main(int argc, char **argv) {
       !check_candidates("pegn", "朋", NULL, 0) ||
       !check_candidates("zhognwen", "中文", NULL, 0) ||
       !check_candidates("yign", "应", NULL, 0) ||
-      !check_candidates("shou", "手", "说", 0) ||
-      !check_candidates("shuo", "说", "手", 0) ||
-      !check_candidates("lei", "类", "列", 0) ||
-      !check_candidates("lie", "列", "类", 0) ||
-      !check_candidates("shujuku", "数据库", NULL, 0)) return 19;
+      !check_candidates("coup", "凑拍", "coup", 1) ||
+      !check_candidates("wojintianxiawuxiangquchaoshimaidianrou",
+                        "我今天下午想去超市买点肉", "我今天下午想去超市卖点肉", 1) ||
+      !check_candidates("shujuku", "数据库", NULL, 0) ||
+      !check_ascii_mode()) return 19;
   for (int iteration = 0; iteration < VT_SMOKE_ITERATIONS; iteration++) {
     VTSessionID session = vt_rime_session();
     if (!session) return 2;

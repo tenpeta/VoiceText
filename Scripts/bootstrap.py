@@ -47,11 +47,13 @@ def main():
     for source in (VENDOR / "dist/include").glob("*.h"):
         shutil.copy2(source, VENDOR / "include" / source.name)
     library = VENDOR / "lib/librime.1.dylib"
-    # Ship arm64 core and only the Lua plugin used by candidate ranking.
+    # The core and both runtime plugins come from the same release archive.
     subprocess.run(["lipo", str(VENDOR / "dist/lib/librime.1.17.0.dylib"), "-thin", "arm64", "-output", str(library)], check=True)
-    lua = VENDOR / "lib/librime-lua.dylib"
-    subprocess.run(["lipo", str(VENDOR / "dist/lib/rime-plugins/librime-lua.dylib"), "-thin", "arm64", "-output", str(lua)], check=True)
-    subprocess.run(["codesign", "--force", "--sign", "-", str(lua)], check=True)
+    for name in ["lua", "octagram"]:
+        plugin = VENDOR / f"lib/librime-{name}.dylib"
+        subprocess.run(["lipo", str(VENDOR / "dist/lib/rime-plugins" / plugin.name),
+                        "-thin", "arm64", "-output", str(plugin)], check=True)
+        subprocess.run(["codesign", "--force", "--sign", "-", str(plugin)], check=True)
     alias = VENDOR / "lib/librime.dylib"
     alias.unlink(missing_ok=True)
     alias.symlink_to("librime.1.dylib")
@@ -68,6 +70,7 @@ def main():
     inputs = [
         ("lua/lua", "v5.4.8", "lua.h", notices / "Lua-5.4.8.LICENSE.h"),
         ("hchunhui/librime-lua", "ec52e48", "LICENSE", notices / "librime-lua.LICENSE"),
+        ("lotem/librime-octagram", "dfcc151", "LICENSE", notices / "librime-octagram.LICENSE"),
 
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "essay.txt", resources / "essay.txt"),
         ("rime/rime-essay", "054920de4f54c9e5994276a96a4fc2a35cb51aa3", "LICENSE", notices / "essay.LICENSE"),
@@ -86,12 +89,16 @@ def main():
     for path in ["melt_eng.dict.yaml", "en_dicts/en.dict.yaml", "en_dicts/en_ext.dict.yaml"]:
         inputs.append(("iDvel/rime-ice", ice_revision, path, resources / path))
     inputs.extend([
+        ("gaboolic/rime-frost", frost_revision, "lua/reduce_english_filter.lua",
+         resources / "lua/reduce_english_filter.lua", "8e54d48fc8b3e736dc416bfabc219ab05def58dc3e05dfa06943a65d3046e567"),
+        ("gaboolic/rime-frost", frost_revision, "zh-moqi.gram",
+         resources / "zh-moqi.gram", "7b9a593ce9f58bd538048cef11f825c3cd86307030552726d58785dd87d98ae9"),
         ("gaboolic/rime-frost", frost_revision, "LICENSE", notices / "rime-frost.LICENSE"),
         ("iDvel/rime-ice", ice_revision, "LICENSE", notices / "rime-ice.LICENSE"),
     ])
-    for repo, revision, path, destination in inputs:
+    for repo, revision, path, destination, *checksum in inputs:
         url = f"https://raw.githubusercontent.com/{repo}/{revision}/{path}"
-        digest = download(url, destination)
+        digest = download(url, destination, *checksum)
         manifest.append(dict(source=url, sha256=digest))
     gpl_url = "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-14.2.0/COPYING3"
     manifest.append(dict(source=gpl_url, sha256=download(gpl_url, notices / "GPL-3.0.txt")))
@@ -102,7 +109,7 @@ def main():
     notices.mkdir(parents=True, exist_ok=True)
     shutil.copy2(VENDOR / "deps/include/COPYING.darts-clone", notices / "darts-clone.LICENSE")
     (notices / "resources.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    complete.write_text("librime-1.17.0-frost-lua-1\n")
+    complete.write_text("librime-1.17.0-frost-grammar-1\n")
     print("librime 1.17.0 and base dictionaries are ready.")
 
 if __name__ == "__main__":
