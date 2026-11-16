@@ -36,7 +36,7 @@ final class DoubaoWebSocket: DoubaoTransport, @unchecked Sendable {
             catch { return error }
         }
         if (error as? URLError)?.code == .badServerResponse {
-            return VoiceTextError.message("豆包连接失败，请检查接口地址、鉴权方式、App ID / 密钥及资源 ID。")
+            return VoiceTextError.message("豆包连接失败，请检查接口地址、鉴权方式、App ID / 密钥及小时版开通状态。")
         }
         return error
     }
@@ -95,8 +95,8 @@ actor DoubaoSession {
     }
 
     static func makeRequest(configuration: ServiceConfiguration, key: String, appID: String?) throws -> URLRequest {
-        guard ["volc.seedasr.sauc.duration", "volc.seedasr.sauc.concurrent"].contains(configuration.model) else {
-            throw VoiceTextError.message("请输入已开通的豆包 2.0 流式识别资源 ID（volc.seedasr.sauc.duration 或 volc.seedasr.sauc.concurrent）。")
+        guard configuration.model == ASRProvider.doubao.defaultModel else {
+            throw VoiceTextError.message("请开通豆包流式语音识别 2.0 小时版。")
         }
         guard !key.isEmpty else { throw VoiceTextError.message("请先保存豆包识别凭据。") }
         var request = URLRequest(url: try configuration.url(streaming: true), timeoutInterval: 10)

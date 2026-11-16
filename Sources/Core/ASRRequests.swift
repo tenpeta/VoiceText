@@ -2,24 +2,34 @@ import Foundation
 
 enum ASRRequests {
     static func qwenBody(wav: Data, model: String) throws -> Data {
-        try JSONSerialization.data(withJSONObject: [
-            "model": model, "stream": false,
-            "messages": [["role": "user", "content": [["type": "input_audio", "input_audio": ["data": "data:audio/wav;base64," + wav.base64EncodedString()]]]]],
-            "asr_options": ["enable_itn": true]
+        let audio = ["type": "input_audio", "input_audio": ["data": "data:audio/wav;base64," + wav.base64EncodedString()]] as [String: Any]
+        return try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "input": ["messages": [["role": "user", "content": [audio]]]],
+            "parameters": ["format": "wav", "sample_rate": "16000"]
         ])
     }
-    static func transcript(_ data: Data, provider: ASRProvider) throws -> String {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw invalid }
-        let text: String?
-        if provider == .openAI { text = json["text"] as? String }
-        else {
-            let choices = json["choices"] as? [[String: Any]]
-            text = (choices?.first?["message"] as? [String: Any])?["content"] as? String
-        }
-        guard let text else { throw invalid }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceTextError.noSpeech }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    static func qwenTranscript(_ data: Data) throws -> String {
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let output = json?["output"] as? [String: Any]
+        return try validatedText(output?["text"] as? String)
     }
+
+    static func chatTranscript(_ data: Data) throws -> String {
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let choices = json?["choices"] as? [[String: Any]]
+        let message = choices?.first?["message"] as? [String: Any]
+        return try validatedText(message?["content"] as? String)
+    }
+
+    static func validatedText(_ text: String?) throws -> String {
+        guard let text else { throw invalid }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw VoiceTextError.noSpeech }
+        return trimmed
+    }
+
     static func check(_ response: URLResponse) throws {
         guard let response = response as? HTTPURLResponse else { throw invalid }
         switch response.statusCode {

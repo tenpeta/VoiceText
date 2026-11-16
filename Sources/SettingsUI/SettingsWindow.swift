@@ -201,28 +201,33 @@ private struct VoiceSettings: View {
         Form {
             Section("语音识别 · ASR") {
                 Picker("服务商", selection: $settings.value.provider) { ForEach(ASRProvider.allCases) { Text($0.title).tag($0) } }.disabled(voice.busy)
-                TextField("完整接口地址", text: $settings.value.service.endpoint).textContentType(.URL)
-                TextField(settings.value.provider == .doubao ? "资源 ID" : "模型名称", text: $settings.value.service.model)
-                if settings.value.provider == .doubao {
+                LabeledContent("模型名称", value: settings.value.provider.modelTitle)
+                LabeledContent("模型 ID", value: settings.value.provider.modelID)
+                switch settings.value.provider {
+                case .qwen:
+                    LabeledContent("地域", value: "华北2（北京）")
+                    TextField("业务空间 ID", text: Binding(get: { settings.value.qwenWorkspaceID ?? "" }, set: { settings.value.qwenWorkspaceID = $0 }))
+                case .tencent:
+                    TextField("AppID", text: Binding(get: { settings.value.tencentAppID ?? "" }, set: { settings.value.tencentAppID = $0 }))
+                    TextField("SecretId", text: Binding(get: { settings.value.tencentSecretID ?? "" }, set: { settings.value.tencentSecretID = $0 }))
+                case .doubao:
                     Picker("控制台鉴权", selection: Binding(get: { settings.value.doubaoLegacyAuth ?? false }, set: { settings.value.doubaoLegacyAuth = $0 })) {
-                        Text("新版控制台 API Key").tag(false)
-                        Text("旧版控制台 App ID / Access Token").tag(true)
+                        Text("新版控制台").tag(false)
+                        Text("旧版控制台").tag(true)
                     }
                     if settings.value.doubaoLegacyAuth == true {
                         TextField("App ID", text: Binding(get: { settings.value.doubaoAppID ?? "" }, set: { settings.value.doubaoAppID = $0 }))
                     }
                 }
-                SecureField(settings.value.provider == .doubao && settings.value.doubaoLegacyAuth == true ? "Access Token" : "ASR API Key", text: $asrKey)
+                SecureField(asrKeyLabel, text: $asrKey)
                 HStack {
                     Button("保存 ASR 密钥") { save(asrKey, account: asrAccount) }
-                    Button("恢复接口预设") { settings.value.service = .preset(settings.value.provider) }
                     if settings.value.provider == .doubao {
                         Button(testingConnection ? "连接中…" : "测试连接") { testConnection() }
                             .disabled(voice.busy || testingConnection)
                     }
                 }
-                Text(settings.value.provider == .doubao ? "使用豆包流式语音识别 2.0 的一句话接口。根据控制台版本选择鉴权方式，资源 ID 按已开通的小时版或并发版填写。" : "录音结束后调用专用 ASR 模型，等待完整结果。")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(asrHelp).font(.caption).foregroundStyle(.secondary)
             }
             Section("麦克风与录音测试") {
                 HStack {
@@ -254,14 +259,35 @@ private struct VoiceSettings: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 permission = AVCaptureDevice.authorizationStatus(for: .audio)
             }
-            .task(id: asrAccount) {
-                do { asrKey = try CredentialStore.shared.read(asrAccount); cleanupKey = try CredentialStore.shared.read("cleanup") }
+            .onChange(of: asrAccount, initial: true) {
+                asrKey = ""
+                do { asrKey = try CredentialStore.shared.read(asrAccount) }
+                catch { message = error.localizedDescription }
+            }
+            .onAppear {
+                do { cleanupKey = try CredentialStore.shared.read("cleanup") }
                 catch { message = error.localizedDescription }
             }
     }
-    private var asrAccount: String {
-        settings.value.provider == .doubao && settings.value.doubaoLegacyAuth == true ? "asr.doubao.legacy" : "asr.\(settings.value.provider.rawValue)"
+
+    private var asrAccount: String { settings.value.asrAccount }
+
+    private var asrKeyLabel: String {
+        switch settings.value.provider {
+        case .doubao: return settings.value.doubaoLegacyAuth == true ? "Access Token" : "API Key"
+        case .qwen: return "API Key"
+        case .tencent: return "SecretKey"
+        }
     }
+
+    private var asrHelp: String {
+        switch settings.value.provider {
+        case .doubao: return "使用小时版，按语音时长计费。"
+        case .qwen: return "请使用华北2（北京）的业务空间 ID 和 API Key。录音结束后提交转写。"
+        case .tencent: return "请先开通腾讯云语音识别服务。录音时实时发送音频，结束后获取完整结果。"
+        }
+    }
+
     private func testConnection() {
         let configuration = settings.value
         let account = asrAccount
@@ -273,7 +299,7 @@ private struct VoiceSettings: View {
             do {
                 let key = try CredentialStore.shared.read(account)
                 guard !key.isEmpty else { throw VoiceTextError.message("请先填写并保存 ASR 密钥，再测试连接。") }
-                let connection = DoubaoSession(configuration: configuration.service, key: key,
+                let connection = DoubaoSession(configuration: configuration.doubao, key: key,
                     appID: configuration.doubaoLegacyAuth == true ? (configuration.doubaoAppID ?? "") : nil)
                 session = connection
                 try await connection.start()

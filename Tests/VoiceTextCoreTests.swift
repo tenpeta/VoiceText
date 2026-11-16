@@ -46,12 +46,15 @@ final class VoiceTextCoreTests: XCTestCase {
     }
 
     func testEmptyTranscriptIsNoSpeechWhileMalformedResponseRemainsAnError() throws {
-        for provider in [ASRProvider.openAI, .qwen] {
-            let json = provider == .openAI ? #"{"text":"  "}"# : #"{"choices":[{"message":{"content":"  "}}]}"#
-            XCTAssertThrowsError(try ASRRequests.transcript(Data(json.utf8), provider: provider)) {
+        let responses = [
+            (ASRRequests.qwenTranscript, #"{"output":{"text":"  "}}"#),
+            (ASRRequests.chatTranscript, #"{"choices":[{"message":{"content":"  "}}]}"#)
+        ]
+        for (parse, json) in responses {
+            XCTAssertThrowsError(try parse(Data(json.utf8))) {
                 XCTAssertEqual($0 as? VoiceTextError, .noSpeech)
             }
-            XCTAssertThrowsError(try ASRRequests.transcript(Data("{}".utf8), provider: provider)) {
+            XCTAssertThrowsError(try parse(Data("{}".utf8))) {
                 XCTAssertNotEqual($0 as? VoiceTextError, .noSpeech)
             }
         }
@@ -126,17 +129,15 @@ final class VoiceTextCoreTests: XCTestCase {
     }
 
     func testDoubao2ConsoleAuthentication() throws {
-        for resource in ["volc.seedasr.sauc.duration", "volc.seedasr.sauc.concurrent"] {
-            let config = ServiceConfiguration(endpoint: ASRProvider.doubao.defaultEndpoint, model: resource)
-            let modern = try DoubaoSession.makeRequest(configuration: config, key: "api-key", appID: nil)
-            XCTAssertEqual(modern.value(forHTTPHeaderField: "X-Api-Resource-Id"), resource)
-            XCTAssertEqual(modern.value(forHTTPHeaderField: "X-Api-Key"), "api-key")
-            XCTAssertNil(modern.value(forHTTPHeaderField: "X-Api-Access-Key"))
-            let legacy = try DoubaoSession.makeRequest(configuration: config, key: "token", appID: "123")
-            XCTAssertEqual(legacy.value(forHTTPHeaderField: "X-Api-App-Key"), "123")
-            XCTAssertEqual(legacy.value(forHTTPHeaderField: "X-Api-Access-Key"), "token")
-            XCTAssertNil(legacy.value(forHTTPHeaderField: "X-Api-Key"))
-        }
+        let config = ServiceConfiguration.preset(.doubao)
+        let modern = try DoubaoSession.makeRequest(configuration: config, key: "api-key", appID: nil)
+        XCTAssertEqual(modern.value(forHTTPHeaderField: "X-Api-Resource-Id"), "volc.seedasr.sauc.duration")
+        XCTAssertEqual(modern.value(forHTTPHeaderField: "X-Api-Key"), "api-key")
+        XCTAssertNil(modern.value(forHTTPHeaderField: "X-Api-Access-Key"))
+        let legacy = try DoubaoSession.makeRequest(configuration: config, key: "token", appID: "123")
+        XCTAssertEqual(legacy.value(forHTTPHeaderField: "X-Api-App-Key"), "123")
+        XCTAssertEqual(legacy.value(forHTTPHeaderField: "X-Api-Access-Key"), "token")
+        XCTAssertNil(legacy.value(forHTTPHeaderField: "X-Api-Key"))
         XCTAssertThrowsError(try DoubaoSession.makeRequest(configuration: .preset(.doubao), key: "token", appID: ""))
         XCTAssertThrowsError(try DoubaoSession.makeRequest(configuration: .init(endpoint: ASRProvider.doubao.defaultEndpoint, model: "invalid"), key: "key", appID: nil))
     }
@@ -167,18 +168,27 @@ final class VoiceTextCoreTests: XCTestCase {
         XCTAssertThrowsError(try DoubaoProtocol.gunzip(Data("bad gzip".utf8)))
     }
 
-    func testFileProvidersHaveDifferentRequestAndResponseShapes() throws {
-        let pcm = Data([1, 2, 3, 4])
-        let body = try ASRRequests.qwenBody(wav: pcm, model: "qwen3-asr-flash")
+    func testTencentSignsPCMRequest() throws {
+        let url = try TencentSession.signedURL(configuration: .preset(.tencent), appID: "123456",
+                                               secretID: "TestID", secretKey: "test-key",
+                                               timestamp: 1700000000, nonce: 42, voiceID: "voice-test")
+        XCTAssertEqual(url.absoluteString, "wss://asr.cloud.tencent.com/asr/v2/123456?engine_model_type=Hy-ASR-3.0-preview&expired=1700000600&nonce=42&secretid=TestID&timestamp=1700000000&voice_format=1&voice_id=voice-test&signature=Uz3FCWPfYfs7RrOhNoGz4TonS34%3D")
+    }
+
+    func testQwenBeijingConfigurationAndNativeAPI() throws {
+        let configuration = try ASRProvider.qwenConfiguration(workspaceID: " ws-example ")
+        XCTAssertEqual(try configuration.url().host, "ws-example.cn-beijing.maas.aliyuncs.com")
+        XCTAssertThrowsError(try ASRProvider.qwenConfiguration(workspaceID: ""))
+        let body = try ASRRequests.qwenBody(wav: Data([1, 2, 3, 4]), model: configuration.model)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(json["stream"] as? Bool, false)
-        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        XCTAssertEqual(json["model"] as? String, "qwen-audio-3.1-asr-flash")
+        XCTAssertEqual(json["parameters"] as? [String: String], ["format": "wav", "sample_rate": "16000"])
+        let input = try XCTUnwrap(json["input"] as? [String: Any])
+        let messages = try XCTUnwrap(input["messages"] as? [[String: Any]])
         let content = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
         XCTAssertEqual((content.first?["input_audio"] as? [String: Any])?["data"] as? String, "data:audio/wav;base64,AQIDBA==")
-        XCTAssertEqual(try ASRRequests.transcript(Data(#"{"text":"中文听写"}"#.utf8), provider: .openAI), "中文听写")
-        XCTAssertEqual(try ASRRequests.transcript(Data(#"{"choices":[{"message":{"content":"完成。"}}]}"#.utf8), provider: .qwen), "完成。")
-        XCTAssertThrowsError(try ASRRequests.transcript(Data(#"{"choices":[]}"#.utf8), provider: .qwen))
-        XCTAssertThrowsError(try ASRRequests.transcript(Data(#"{"text":" "}"#.utf8), provider: .openAI))
+        XCTAssertEqual(try ASRRequests.qwenTranscript(Data(#"{"output":{"text":"中文听写"}}"#.utf8)), "中文听写")
+        XCTAssertEqual(try ASRRequests.chatTranscript(Data(#"{"choices":[{"message":{"content":"完成。"}}]}"#.utf8)), "完成。")
         XCTAssertThrowsError(try ServiceConfiguration(endpoint: "http://example.com", model: "m").url())
         XCTAssertThrowsError(try ServiceConfiguration(endpoint: "https://key@example.com", model: "m").url())
         XCTAssertEqual(try ServiceConfiguration.preset(.doubao).url(streaming: true).scheme, "wss")
@@ -274,7 +284,7 @@ final class VoiceTextCoreTests: XCTestCase {
         let first = HistoryStore(url: url)
         let id = try await first.insert(.init(text: "原始转写", provider: .doubao, model: "volc.seedasr.sauc.duration"))
         try await first.update(id: id, finalText: "整理后的文本。")
-        for i in 0..<34 { _ = try await first.insert(.init(text: "记录 \(i)", provider: .qwen, model: "qwen3-asr-flash")) }
+        for i in 0..<34 { _ = try await first.insert(.init(text: "记录 \(i)", provider: .qwen, model: ASRProvider.qwen.defaultModel)) }
         let reopened = HistoryStore(url: url)
         let page1 = try await reopened.page(limit: 30)
         let page2 = try await reopened.page(offset: 30, limit: 30)

@@ -40,7 +40,7 @@ enum DoubaoProtocol {
             let size = Int(try data.readUInt32(at: &cursor))
             guard size <= data.count - cursor else { throw invalidFrame }
             // Do not surface arbitrary server bodies, which can echo credentials/audio.
-            throw VoiceTextError.message("豆包识别失败（\(code)）。请检查服务权限、资源 ID 或稍后重试。")
+            throw VoiceTextError.message("豆包识别失败（\(code)）。请检查小时版服务权限或稍后重试。")
         }
         guard type == 9, data[2] >> 4 == 1 else { throw invalidFrame }
         if flags & 1 != 0 { _ = try data.readUInt32(at: &cursor) }

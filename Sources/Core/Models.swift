@@ -1,20 +1,47 @@
 import Foundation
 
 enum ASRProvider: String, Codable, CaseIterable, Identifiable, Sendable {
-    case doubao, openAI, qwen
+    case doubao, qwen, tencent
+
     var id: String { rawValue }
     var title: String {
-        switch self { case .doubao: return "豆包流式语音识别"; case .openAI: return "OpenAI 语音转写"; case .qwen: return "千问 ASR" }
+        switch self {
+        case .doubao: return "火山引擎"
+        case .qwen: return "阿里云百炼"
+        case .tencent: return "腾讯云"
+        }
     }
     var defaultEndpoint: String {
         switch self {
         case .doubao: return "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
-        case .openAI: return "https://api.openai.com/v1/audio/transcriptions"
-        case .qwen: return "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        case .qwen: return "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        case .tencent: return "wss://asr.cloud.tencent.com/asr/v2"
         }
     }
     var defaultModel: String {
-        switch self { case .doubao: return "volc.seedasr.sauc.duration"; case .openAI: return "gpt-transcribe"; case .qwen: return "qwen3-asr-flash" }
+        switch self {
+        case .doubao: return "volc.seedasr.sauc.duration"
+        case .qwen: return "qwen-audio-3.1-asr-flash"
+        case .tencent: return "Hy-ASR-3.0-preview"
+        }
+    }
+    var modelTitle: String {
+        switch self {
+        case .doubao: return "豆包流式语音识别 2.0"
+        case .qwen: return "千问语音识别 3.1 Flash"
+        case .tencent: return "混元语音识别 3.0 预览版"
+        }
+    }
+
+    var modelID: String { self == .doubao ? "Doubao-Seed-ASR-2.0" : defaultModel }
+
+    static func qwenConfiguration(workspaceID: String) throws -> ServiceConfiguration {
+        let id = workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard id.range(of: #"^[a-zA-Z0-9-]+$"#, options: .regularExpression) != nil else {
+            throw VoiceTextError.message("请填写阿里云百炼华北2（北京）的业务空间 ID。")
+        }
+        return .init(endpoint: ASRProvider.qwen.defaultEndpoint.replacingOccurrences(of: "{WorkspaceId}", with: id),
+                     model: ASRProvider.qwen.defaultModel)
     }
 }
 

@@ -4,27 +4,36 @@ import AVFoundation
 enum VoicePhase: Equatable { case idle, connecting, recording, recognizing, cleaning }
 
 actor VoiceAudioSink {
-    private let provider: ASRProvider
+    private let settings: SettingsValue
     private let configuration: ServiceConfiguration
     private let key: String
-    private let doubaoAppID: String?
     private var doubao: DoubaoSession?
+    private var tencent: TencentSession?
     private var file: WAVFile?
     private var samples = 0
-    init(provider: ASRProvider, configuration: ServiceConfiguration, key: String, doubaoAppID: String? = nil) {
-        self.provider = provider; self.configuration = configuration; self.key = key; self.doubaoAppID = doubaoAppID
+
+    init(settings: SettingsValue, configuration: ServiceConfiguration, key: String) {
+        self.settings = settings; self.configuration = configuration; self.key = key
     }
+
     func start() async throws {
-        if provider == .doubao {
-            let session = DoubaoSession(configuration: configuration, key: key, appID: doubaoAppID)
+        switch settings.provider {
+        case .doubao:
+            let appID = settings.doubaoLegacyAuth == true ? (settings.doubaoAppID ?? "") : nil
+            let session = DoubaoSession(configuration: configuration, key: key, appID: appID)
             doubao = session; try await session.start()
-        } else {
-            _ = try configuration.url(); file = try WAVFile(directory: AppPaths.temporary)
+        case .qwen:
+            file = try WAVFile(directory: AppPaths.temporary)
+        case .tencent:
+            let session = try TencentSession(configuration: configuration, appID: settings.tencentAppID ?? "",
+                                             secretID: settings.tencentSecretID ?? "", secretKey: key)
+            tencent = session; try await session.start()
         }
     }
     func append(_ pcm: Data) async throws {
         samples += pcm.count / 2
         if let doubao { try await doubao.append(pcm) }
+        else if let tencent { try await tencent.append(pcm) }
         else { try file?.append(pcm) }
     }
     func finish() async throws -> ASRResult {
@@ -32,12 +41,17 @@ actor VoiceAudioSink {
         defer { Performance.voice.endInterval("FinalASR", interval) }
         guard samples >= 4800 else { throw VoiceTextError.noSpeech }
         if let doubao { return try await doubao.finish() }
+        if let tencent { return try await tencent.finish() }
         guard let file else { throw CancellationError() }
         defer { file.remove(); self.file = nil }
         try file.finish()
-        return try await HTTPService.recognize(file: file.url, provider: provider, configuration: configuration, key: key)
+        return try await HTTPService.recognizeQwen(file: file.url, configuration: configuration, key: key)
     }
-    func cancel() async { await doubao?.cancel(); doubao = nil; file?.remove(); file = nil }
+    func cancel() async {
+        await doubao?.cancel(); doubao = nil
+        await tencent?.cancel(); tencent = nil
+        file?.remove(); file = nil
+    }
 }
 
 @MainActor
@@ -75,18 +89,18 @@ final class VoiceCoordinator: ObservableObject {
         }
         let configuration = settings.value
         let key: String
+        let service: ServiceConfiguration
         do {
-            let account = configuration.provider == .doubao && configuration.doubaoLegacyAuth == true ? "asr.doubao.legacy" : "asr.\(configuration.provider.rawValue)"
-            key = try CredentialStore.shared.read(account)
+            key = try CredentialStore.shared.read(configuration.asrAccount)
             guard !key.isEmpty else { throw VoiceTextError.message("请先在设置的语音页保存 ASR 密钥。") }
-            _ = try configuration.service.url(streaming: configuration.provider == .doubao)
+            service = try configuration.asrConfiguration()
         } catch { hasError = true; update(.idle, error.localizedDescription); return }
         let id = UUID(); generation = id; seconds = 0
         let capture = AudioCapture(); self.capture = capture
-        update(.connecting, configuration.provider == .doubao ? "正在连接豆包语音识别…" : "正在准备录音…")
+        update(.connecting, configuration.provider == .qwen ? "正在准备录音…" : "正在连接\(configuration.provider.title)语音识别…")
         task = Task {
             guard self.generation == id, !Task.isCancelled else { return }
-            let sink = VoiceAudioSink(provider: configuration.provider, configuration: configuration.service, key: key, doubaoAppID: configuration.provider == .doubao && configuration.doubaoLegacyAuth == true ? (configuration.doubaoAppID ?? "") : nil)
+            let sink = VoiceAudioSink(settings: configuration, configuration: service, key: key)
             self.sink = sink
             do {
                 try await sink.start(); try Task.checkCancellation()

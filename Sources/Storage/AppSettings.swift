@@ -80,16 +80,24 @@ struct SettingsValue: Codable {
     var doubao = ServiceConfiguration.preset(.doubao)
     var doubaoLegacyAuth: Bool? = nil
     var doubaoAppID: String? = nil
-    var openAI = ServiceConfiguration.preset(.openAI)
-    var qwen = ServiceConfiguration.preset(.qwen)
+    var qwenWorkspaceID: String? = nil
+    var tencentAppID: String? = nil
+    var tencentSecretID: String? = nil
     var cleanupEnabled = false
     var cleanup = ServiceConfiguration(endpoint: "https://api.openai.com/v1/chat/completions", model: "")
     var voiceKeyCode: UInt16 = 61 // Right Option
     var voiceModifiers: UInt = 0 // Retained to migrate the previous combination shortcuts.
     var voiceKeyName: String? = nil
-    var service: ServiceConfiguration {
-        get { switch provider { case .doubao: return doubao; case .openAI: return openAI; case .qwen: return qwen } }
-        set { switch provider { case .doubao: doubao = newValue; case .openAI: openAI = newValue; case .qwen: qwen = newValue } }
+    var asrAccount: String {
+        provider == .doubao && doubaoLegacyAuth == true ? "asr.doubao.legacy" : "asr.\(provider.rawValue)"
+    }
+
+    func asrConfiguration() throws -> ServiceConfiguration {
+        switch provider {
+        case .doubao: return doubao
+        case .qwen: return try ASRProvider.qwenConfiguration(workspaceID: qwenWorkspaceID ?? "")
+        case .tencent: return .preset(.tencent)
+        }
     }
 }
 
@@ -108,6 +116,7 @@ final class AppSettings: ObservableObject {
         }
         var loaded = UserDefaults.standard.data(forKey: "settings.v1")
             .flatMap { try? JSONDecoder().decode(SettingsValue.self, from: $0) } ?? SettingsValue()
+        loaded.doubao = .preset(.doubao)
         // Update the old default appearance while preserving customized settings.
         if loaded.appearance.fontSize == 18 && loaded.appearance.cornerRadius == 12 &&
             loaded.appearance.padding == 10 && loaded.appearance.spacing == 8 {
