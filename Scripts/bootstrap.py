@@ -12,9 +12,9 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 VENDOR = ROOT / "Vendor"
 
-def download(url, target, digest=None):
+def download(url, target, digest=None, *, refresh=False):
     target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists():
+    if refresh or not target.exists():
         print("Downloading", target.name, flush=True)
         request = urllib.request.Request(url, headers={"User-Agent": "VoiceText-build"})
         temporary = target.with_suffix(target.suffix + ".download")
@@ -66,6 +66,8 @@ def main():
     resources = ROOT / "Resources/Rime/upstream"
     (resources / "luna_pinyin.dict.yaml").unlink(missing_ok=True)
     notices = ROOT / "ThirdPartyNotices/upstream"
+    manifest_path = notices / "resources.json"
+    previous_sources = {item["source"] for item in json.loads(manifest_path.read_text())} if manifest_path.exists() else set()
     manifest = []
     inputs = [
         ("lua/lua", "v5.4.8", "lua.h", notices / "Lua-5.4.8.LICENSE.h"),
@@ -82,11 +84,12 @@ def main():
         ("jbeder/yaml-cpp", "2f86d13775d119edbb69af52e5f566fd65c6953b", "LICENSE", notices / "yaml-cpp.LICENSE"),
     ]
     frost_revision = "af22941caec0fb7c052893e1bf439b79a94e5fb2"
-    ice_revision = "99662ba01e3affa6a0f009174ca530b887bac3b6"
+    frost_dictionary_revision = "4b190b873c99da55ba06a24b9cf5ad5a9d8a0818"
+    ice_revision = "927e1cf1d3eeb9bf4be85e3f684dba4dd485b6f6"
     for name in ["8105", "base", "ext", "others"]:
         path = f"cn_dicts/{name}.dict.yaml"
-        inputs.append(("gaboolic/rime-frost", frost_revision, path, resources / path))
-    for path in ["melt_eng.dict.yaml", "en_dicts/en.dict.yaml", "en_dicts/en_ext.dict.yaml"]:
+        inputs.append(("gaboolic/rime-frost", frost_dictionary_revision, path, resources / path))
+    for path in ["melt_eng.dict.yaml", "en_dicts/en.dict.yaml", "en_dicts/en_ext.dict.yaml", "opencc/emoji.txt"]:
         inputs.append(("iDvel/rime-ice", ice_revision, path, resources / path))
     inputs.extend([
         ("gaboolic/rime-frost", frost_revision, "lua/reduce_english_filter.lua",
@@ -98,7 +101,7 @@ def main():
     ])
     for repo, revision, path, destination, *checksum in inputs:
         url = f"https://raw.githubusercontent.com/{repo}/{revision}/{path}"
-        digest = download(url, destination, *checksum)
+        digest = download(url, destination, *checksum, refresh=url not in previous_sources)
         manifest.append(dict(source=url, sha256=digest))
     gpl_url = "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-14.2.0/COPYING3"
     manifest.append(dict(source=gpl_url, sha256=download(gpl_url, notices / "GPL-3.0.txt")))
@@ -108,8 +111,8 @@ def main():
         shutil.copy2(VENDOR / "deps/share/opencc" / name, opencc / name)
     notices.mkdir(parents=True, exist_ok=True)
     shutil.copy2(VENDOR / "deps/include/COPYING.darts-clone", notices / "darts-clone.LICENSE")
-    (notices / "resources.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    complete.write_text("librime-1.17.0-frost-grammar-1\n")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    complete.write_text("librime-1.17.0-dictionaries-2\n")
     print("librime 1.17.0 and base dictionaries are ready.")
 
 if __name__ == "__main__":

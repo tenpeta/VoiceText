@@ -93,7 +93,9 @@ static int check_chinese_punctuation(void) {
 int main(int argc, char **argv) {
   if (argc != 4 || !vt_rime_start(argv[1], argv[2], argv[3])) return 1;
   if (!check_chinese_punctuation()) return 21;
-  if (!check_candidates("xiangmu", "项目", NULL, 0) ||
+  if (!check_candidates("kaixin", "开心", "😄", 1) ||
+      !check_candidates("yiyuan", "医院", "🏥", 1) ||
+      !check_candidates("xiangmu", "项目", NULL, 0) ||
       !check_candidates("xaingmu", "项目", NULL, 0) ||
       !check_candidates("kuai", "快", NULL, 0) ||
       !check_candidates("kaui", "快", NULL, 0) ||

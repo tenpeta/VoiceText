@@ -6,9 +6,10 @@ export CLANG_MODULE_CACHE_PATH="$PWD/build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/build/ModuleCache"
 swift test --disable-sandbox --scratch-path build/SwiftPM --cache-path build/PackageCache \
     --config-path build/PackageConfig --security-path build/PackageSecurity
-if [ "$(cat Vendor/.bootstrap-complete 2>/dev/null)" != "librime-1.17.0-frost-grammar-1" ] || \
+if [ "$(cat Vendor/.bootstrap-complete 2>/dev/null)" != "librime-1.17.0-dictionaries-2" ] || \
     [ ! -f Vendor/lib/librime.1.dylib ] || \
     [ ! -f Vendor/lib/librime-octagram.dylib ] || \
+    [ ! -f Resources/Rime/upstream/opencc/emoji.txt ] || \
     [ ! -f Resources/Rime/upstream/zh-moqi.gram ] || \
     [ ! -f Resources/Rime/upstream/lua/reduce_english_filter.lua ]; then
     python3 Scripts/bootstrap.py

@@ -2,7 +2,7 @@
 schema:
   schema_id: voicetext_pinyin
   name: VoiceText 全拼
-  version: '1.6'
+  version: '1.7'
   dependencies: [melt_eng]
 switches:
   - name: normalize_chinese
@@ -22,7 +22,7 @@ engine:
   processors: [ascii_composer, recognizer, key_binder, speller, punctuator, selector, navigator, express_editor]
   segmentors: [ascii_segmentor, matcher, abc_segmentor, punct_segmentor, fallback_segmentor]
   translators: [punct_translator, script_translator, table_translator@melt_eng]
-  filters: [lua_filter@*reduce_english_filter, simplifier@normalize_chinese, simplifier, uniquifier]
+  filters: [lua_filter@*reduce_english_filter, simplifier@normalize_chinese, lua_filter@*emoji_filter, simplifier, uniquifier]
 # 白霜配置来源见 ThirdPartyNotices/README.md。
 grammar:
   language: zh-moqi
