@@ -10,13 +10,17 @@ VoiceText 是一款轻量的原生 macOS 输入法。平时用 Rime 打拼音，
 
 ## 预览
 
-**语音听写**
+<p align="center"><strong>语音听写</strong></p>
 
-<img src="docs/images/voice-dictation.gif" width="400" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
+<p align="center">
+  <img src="docs/images/voice-dictation.gif" width="400" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
+</p>
 
-**拼音输入**
+<p align="center"><strong>拼音输入</strong></p>
 
-<img src="docs/images/pinyin-candidates.png" width="400" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
+<p align="center">
+  <img src="docs/images/pinyin-candidates.png" width="400" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
+</p>
 
 ## 功能
 
@@ -51,7 +55,9 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 
 双击应用，在「输入」页点击「注册输入法」，然后在系统设置 → 键盘 → 输入法中添加 VoiceText。也可以在构建后运行 `bash Scripts/install.sh`。应用安装在 `~/Library/Input Methods/VoiceText.app`，无需管理员权限。
 
-<img src="docs/images/settings.png" width="720" alt="VoiceText 设置的输入页，显示简繁切换、快捷键和注册输入法入口">
+<p align="center">
+  <img src="docs/images/settings.png" width="720" alt="VoiceText 设置的输入页，显示简繁切换、快捷键和注册输入法入口">
+</p>
 
 如果系统设置中没有出现 VoiceText，请关闭并重新打开系统设置；仍未出现时，重新登录 macOS 后再试。注册成功后仍需手动添加、切换并测试输入法。
 
