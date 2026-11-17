@@ -2,6 +2,8 @@
 
 VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云端语音听写。使用 Swift、InputMethodKit 和 AppKit 开发。
 
+<img src="docs/images/pinyin-candidates.png" width="720" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
+
 ## 功能
 
 - **中文输入**：支持白霜方案中的全拼、简拼、`u/v` 兼容和手滑纠错。连续输入可生成最多 3 条整句候选，支持词频学习、简繁转换和中英文标点。
@@ -10,8 +12,6 @@ VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云
 - **语音听写**：支持火山引擎、阿里云百炼和腾讯云，默认轻按右 Option 开始，再按一次结束，Esc 取消；快捷键可更改。
 - **文本整理**：可选地用单独配置的文本模型整理转写结果，默认关闭；整理失败时保留原始转写。
 - **语音历史**：在本机保存原始转写和最终文本，支持复制、删除和清空。
-
-中文词库选用白霜的 `8105`、`base`、`ext` 和 `others`，整句候选使用随包提供的 `zh-moqi` 模型。中文模式下可直接选择 `melt_eng` 提供的英文单词。中文和英文候选的初始权重分别为 1.2 和 0.7。降权名单中的英文候选排得过靠前时会按白霜规则后移。
 
 ## 环境要求
 
@@ -35,7 +35,9 @@ bash Scripts/build.sh
 build/DerivedData/Build/Products/Release/VoiceText.app
 ```
 
-双击应用，在「输入」页选择安装，然后在系统设置 → 键盘 → 输入法中添加 VoiceText。也可以在构建后运行 `bash Scripts/install.sh`。应用安装在 `~/Library/Input Methods/VoiceText.app`，无需管理员权限。
+双击应用，在「输入」页点击「注册输入法」，然后在系统设置 → 键盘 → 输入法中添加 VoiceText。也可以在构建后运行 `bash Scripts/install.sh`。应用安装在 `~/Library/Input Methods/VoiceText.app`，无需管理员权限。
+
+<img src="docs/images/settings.png" width="720" alt="VoiceText 设置的输入页，显示简繁切换、快捷键和注册输入法入口">
 
 如果系统设置中没有出现 VoiceText，请关闭并重新打开系统设置；仍未出现时，重新登录 macOS 后再试。注册成功后仍需手动添加、切换并测试输入法。
 
@@ -44,6 +46,10 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 也可直接打开已提交的 `VoiceText.xcodeproj`。首次在 Xcode 中构建前，先运行 `python3 Scripts/bootstrap.py` 和 `python3 Scripts/prepare_resources.py`。增加源文件后运行 `python3 Scripts/generate_project.py` 更新工程。
 
 ## 使用语音听写
+
+默认轻按右 Option 开始录音，再按一次结束。下面演示了如何把识别结果输入到备忘录。
+
+<img src="docs/images/voice-dictation.gif" width="720" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
 
 在设置的「语音」页选择服务商，填写对应凭据并保存密钥，然后启用麦克风试录。单次录音最长三分钟，调用云服务可能产生费用。
 
@@ -56,6 +62,10 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 火山引擎和腾讯云在录音时通过 WebSocket 发送音频。火山引擎支持在录音前测试连接，该操作不采集或发送录音。阿里云百炼在录音结束后向北京业务空间的专属 HTTP 接口提交音频。此前使用千问 ASR 的用户需要补填北京业务空间 ID，并确认已保存的是北京地域的 API Key。
 
 识别完成后，文本会发送到当时的活动文本框；等待期间可以移动光标或切换应用。如果没有可靠的活动输入目标、已切换到其他输入法或正在应用设置中，结果会显示在可复制的面板中。输入法无法通用地确认目标应用是否接收了文字，因此界面显示「已发送」。密码框和特殊编辑器等场景需要实际验证。
+
+## 输入方案
+
+中文词库选用白霜的 `8105`、`base`、`ext` 和 `others`，整句候选使用随包提供的 `zh-moqi` 模型。中文模式下可直接选择 `melt_eng` 提供的英文单词。中文和英文候选的初始权重分别为 1.2 和 0.7。降权名单中的英文候选排得过靠前时会按白霜规则后移。
 
 ## 数据与隐私
 
