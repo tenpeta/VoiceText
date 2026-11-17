@@ -74,7 +74,7 @@ char *vt_rime_input(VTSessionID s) {
   const char *input = api->get_input(s);
   return input ? strdup(input) : NULL;
 }
-int vt_rime_snapshot(VTSessionID s, VTSnapshot *output) {
+static int snapshot(VTSessionID s, VTSnapshot *output, int *page_size) {
   memset(output, 0, sizeof(*output));
   RIME_STRUCT(RimeContext, context);
   if (!running || !s || !api->get_context(s, &context)) return 0;
@@ -82,6 +82,7 @@ int vt_rime_snapshot(VTSessionID s, VTSnapshot *output) {
   output->cursor = context.composition.cursor_pos;
   output->selection_start = context.composition.sel_start;
   output->selection_end = context.composition.sel_end;
+  if (page_size) *page_size = context.menu.page_size;
   output->count = context.menu.num_candidates;
   output->highlighted = context.menu.highlighted_candidate_index;
   output->page = context.menu.page_no; output->last_page = context.menu.is_last_page;
@@ -95,8 +96,19 @@ int vt_rime_snapshot(VTSessionID s, VTSnapshot *output) {
   }
   api->free_context(&context); return 1;
 }
-int vt_rime_expanded_snapshot(VTSessionID s, int start, int limit, VTSnapshot *output) {
-  if (start < 0 || limit <= 0 || !vt_rime_snapshot(s, output)) return 0;
+int vt_rime_snapshot(VTSessionID s, VTSnapshot *output) {
+  return snapshot(s, output, NULL);
+}
+static int candidate_list_snapshot(VTSessionID s, int start, int limit, VTSnapshot *output, int continuous) {
+  int page_size;
+  if (start < 0 || limit <= 0 || !snapshot(s, output, &page_size)) return 0;
+  if (continuous) {
+    output->highlighted += output->page * page_size;
+    if (limit <= output->highlighted) limit = output->highlighted + 9;
+  } else {
+    output->page = start / limit;
+    output->highlighted = 0;
+  }
   for (int i = 0; i < output->count; i++) {
     free(output->candidates[i].text); free(output->candidates[i].comment);
   }
@@ -104,7 +116,7 @@ int vt_rime_expanded_snapshot(VTSessionID s, int start, int limit, VTSnapshot *o
   output->count = 0;
   output->candidates = calloc((size_t)limit, sizeof(VTCandidate));
   if (!output->candidates) { vt_rime_free_snapshot(output); return 0; }
-  output->page = start / limit; output->highlighted = 0; output->last_page = 1;
+  output->last_page = 1;
   RimeCandidateListIterator iterator = {0};
   if (api->candidate_list_from_index(s, &iterator, start)) {
     while (api->candidate_list_next(&iterator)) {
@@ -116,6 +128,12 @@ int vt_rime_expanded_snapshot(VTSessionID s, int start, int limit, VTSnapshot *o
     api->candidate_list_end(&iterator);
   }
   return 1;
+}
+int vt_rime_continuous_snapshot(VTSessionID s, int limit, VTSnapshot *output) {
+  return candidate_list_snapshot(s, 0, limit, output, 1);
+}
+int vt_rime_expanded_snapshot(VTSessionID s, int start, int limit, VTSnapshot *output) {
+  return candidate_list_snapshot(s, start, limit, output, 0);
 }
 void vt_rime_free_snapshot(VTSnapshot *snapshot) {
   free(snapshot->preedit);

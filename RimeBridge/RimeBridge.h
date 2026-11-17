@@ -17,6 +17,7 @@ void vt_rime_destroy(VTSessionID session);
 int vt_rime_key(VTSessionID session, int key, int modifiers);
 int vt_rime_select(VTSessionID session, size_t index);
 int vt_rime_select_global(VTSessionID session, size_t index);
+int vt_rime_continuous_snapshot(VTSessionID session, int limit, VTSnapshot *snapshot);
 int vt_rime_expanded_snapshot(VTSessionID session, int start, int limit, VTSnapshot *snapshot);
 int vt_rime_page(VTSessionID session, int backward);
 void vt_rime_option(VTSessionID session, const char *name, int value);

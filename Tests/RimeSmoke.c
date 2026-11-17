@@ -154,6 +154,17 @@ int main(int argc, char **argv) {
     if (strcmp(expanded_list.candidates[i].text, continuous_list.candidates[i].text)) return 18;
   }
   vt_rime_free_snapshot(&continuous_list);
+  // Collapsed rows draw from the same continuous order across native page boundaries.
+  if (!vt_rime_page(expanded, 0)) return 19;
+  VTSnapshot paged = {0}, continuous = {0};
+  if (!vt_rime_snapshot(expanded, &paged) || paged.page != 1 ||
+      !vt_rime_continuous_snapshot(expanded, 24, &continuous) ||
+      continuous.count != 24 || continuous.last_page ||
+      continuous.highlighted != normal_list.count + paged.highlighted) return 20;
+  for (int i = 0; i < continuous.count; i++) {
+    if (strcmp(continuous.candidates[i].text, expanded_list.candidates[i].text)) return 21;
+  }
+  vt_rime_free_snapshot(&paged); vt_rime_free_snapshot(&continuous);
   char *expected = strdup(expanded_list.candidates[9].text);
   if (!vt_rime_select_global(expanded, 9)) return 15;
   char *chosen = vt_rime_take_commit(expanded);

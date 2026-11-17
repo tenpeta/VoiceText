@@ -32,14 +32,14 @@ actor HistoryStore {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    func insert(_ result: ASRResult, id: String = UUID().uuidString) throws -> String {
+    func insert(_ result: ASRResult, id: String = UUID().uuidString, finalText: String? = nil) throws -> String {
         try open()
         let sql = "INSERT INTO voice_history VALUES (?, ?, ?, ?, ?, ?)"
         let statement = try prepare(sql); defer { sqlite3_finalize(statement) }
         bind(id, at: 1, to: statement)
         sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
         bind(result.provider.rawValue, at: 3, to: statement); bind(result.model, at: 4, to: statement)
-        bind(result.text, at: 5, to: statement); bind(result.text, at: 6, to: statement)
+        bind(result.text, at: 5, to: statement); bind(finalText ?? result.text, at: 6, to: statement)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw storageError }
         return id
     }

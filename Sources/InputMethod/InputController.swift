@@ -90,7 +90,8 @@ final class InputController: IMKInputController {
                 if number <= range.count { choose(range.lowerBound + number - 1) }
                 return true
             }
-            if event.keyCode == 49 && range.lowerBound > 0 {
+            if event.keyCode == 49 && (range.lowerBound > 0 ||
+                (usesContinuousPaging && !range.contains(snapshot.highlighted))) {
                 choose(range.contains(snapshot.highlighted) ? snapshot.highlighted : range.lowerBound); return true
             }
         }
@@ -126,7 +127,7 @@ final class InputController: IMKInputController {
     func choose(_ index: Int) {
         guard active, let session else { return }
         let panel = AppRuntime.shared.candidates
-        let selected = panel.isExpanded ? session.selectGlobal(index) : session.select(index)
+        let selected = panel.isExpanded || usesContinuousPaging ? session.selectGlobal(index) : session.select(index)
         guard selected else { return }
         panel.setExpanded(false); candidateStart = 0
         refresh()
@@ -137,6 +138,10 @@ final class InputController: IMKInputController {
         candidateStart = 0
         refresh(preservePage: true)
     }
+    private var usesContinuousPaging: Bool {
+        AppRuntime.shared.settings.value.appearance.layout == .horizontal
+    }
+
     func changePage(_ backward: Bool) {
         guard active, let snapshot = currentSnapshot else { return }
         let panel = AppRuntime.shared.candidates
@@ -149,9 +154,10 @@ final class InputController: IMKInputController {
         if backward && range.lowerBound > 0 { candidateStart = panel.previousStart }
         else if !backward && range.upperBound < snapshot.candidates.count { candidateStart = range.upperBound }
         else {
+            guard !usesContinuousPaging else { return }
             guard backward ? snapshot.page > 0 : !snapshot.lastPage else { return }
             session?.page(backward: backward)
-            candidateStart = backward ? Int.max : 0
+            candidateStart = 0
         }
         refresh(preservePage: true)
     }
@@ -211,10 +217,16 @@ final class InputController: IMKInputController {
         guard active, let session else { return }
         if let text = session.takeCommit() { commit(text) }
         let expanded = AppRuntime.shared.candidates.isExpanded
-        guard let snapshot = session.snapshot(expandedStart: expanded ? 0 : nil, expandedLimit: expanded ? candidateStart + 72 : 36) else { currentSnapshot = nil; candidateStart = 0; setPreedit("", caret: 0); hidePalettes(); return }
+        let continuous = !expanded && usesContinuousPaging
+        let continuousLimit = continuous ? max(36, candidateStart + 18) : nil
+        guard let snapshot = session.snapshot(expandedStart: expanded ? 0 : nil,
+                                              expandedLimit: expanded ? candidateStart + 72 : 36,
+                                              continuousLimit: continuousLimit) else { currentSnapshot = nil; candidateStart = 0; setPreedit("", caret: 0); hidePalettes(); return }
         if !preservePage {
-            if currentSnapshot?.preedit != snapshot.preedit || currentSnapshot?.page != snapshot.page { candidateStart = 0 }
-            else if currentSnapshot?.highlighted != snapshot.highlighted { candidateStart = snapshot.highlighted }
+            if currentSnapshot?.preedit != snapshot.preedit || (!continuous && currentSnapshot?.page != snapshot.page) { candidateStart = 0 }
+            else if currentSnapshot?.page != snapshot.page || currentSnapshot?.highlighted != snapshot.highlighted {
+                candidateStart = snapshot.highlighted
+            }
         }
         currentSnapshot = snapshot
         setPreedit(snapshot.preedit, caret: snapshot.caret)
@@ -226,7 +238,7 @@ final class InputController: IMKInputController {
     }
     override func menu() -> NSMenu! {
         let menu = NSMenu()
-        for (title, action) in [("设置与历史…", #selector(openSettings)),
+        for (title, action) in [("设置…", #selector(openSettings)),
                                 ("切换中英文", #selector(toggleLanguage)),
                                 ("切换简繁", #selector(toggleSimplified)),
                                 ("开始 / 结束语音", #selector(toggleVoice))] {

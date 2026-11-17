@@ -38,7 +38,7 @@ private struct SettingsRoot: View {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 10) {
                     Image(systemName: "character.cursor.ibeam").font(.system(size: 25, weight: .medium)).foregroundStyle(.indigo)
-                    VStack(alignment: .leading, spacing: 3) { Text("VoiceText").font(.headline); Text("轻盈表达，自在输入").font(.caption2).foregroundStyle(.secondary) }
+                    Text("VoiceText").font(.system(size: 16, weight: .semibold))
                 }.padding(.top, 20).padding(.horizontal, 18)
                 List(SettingsPage.allCases, selection: $page) { item in Label(item.rawValue, systemImage: item.icon).padding(.vertical, 5).tag(item) }
                     .listStyle(.sidebar)
@@ -65,30 +65,59 @@ private struct InputSettings: View {
     @State private var message = ""
     var body: some View {
         Form {
-            Section("输入引擎") {
-                LabeledContent("全拼", value: engine.ready ? "librime 1.17.0 · 已就绪" : (engine.error ?? "正在准备词库…"))
-                Toggle("默认输出简体中文", isOn: $settings.value.simplified)
+            Section {
+                if !engine.ready {
+                    LabeledContent("全拼", value: engine.error ?? "正在准备词库…")
+                }
+                LabeledContent("简繁切换") {
+                    HStack(spacing: 0) {
+                        scriptButton("简体", simplified: true)
+                        scriptButton("繁体", simplified: false)
+                    }
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("简繁切换")
+                }
                 Toggle("使用英文标点", isOn: $settings.value.asciiPunctuation)
-                Text("使用基础全拼词库，选词习惯保存在本机。空格与数字选词，方向键移动，= / - 翻页。").font(.caption).foregroundStyle(.secondary)
+                Button("打开用户词典目录") { NSWorkspace.shared.open(AppPaths.rime) }
             }
             Section("快捷键") {
                 LabeledContent("开始 / 结束语音") {
-                    ShortcutRecorder(settings: settings).frame(width: 220, height: 28)
+                    ShortcutRecorder(settings: settings).frame(width: 170, height: 28)
                 }
                 LabeledContent("切换中英文", value: "Shift ⇧（左 / 右均可）")
-                Text("点击语音快捷键后，单独按下并松开一个键即可保存，支持区分左右 Option、Control 等按键。Shift 用于切换中英文，Esc 取消设置。").font(.caption).foregroundStyle(.secondary)
-                Text("快捷键仅在本输入法活动时有效；录音期间 Esc 取消。").font(.caption).foregroundStyle(.secondary)
+                Text("按 Esc 取消设置或录音。").font(.caption).foregroundStyle(.secondary)
             }
-            Section("安装与启用") {
-                Text("安装到当前用户的 Library/Input Methods。注册后请在系统设置 → 键盘 → 输入法中添加 VoiceText。").font(.callout)
+            Section("启用输入法") {
+                Text("注册后，在系统键盘设置中添加 VoiceText。").font(.callout)
                 HStack {
-                    Button("安装 / 注册 VoiceText") { do { try InputInstaller.install(); message = "已请求系统注册。请在系统设置中添加 VoiceText，再切换并尝试输入以确认可用。" } catch { message = error.localizedDescription } }
+                    Button("注册输入法") { do { try InputInstaller.install(); message = "" } catch { message = error.localizedDescription } }
                     Button("打开键盘设置") { InputInstaller.openSystemSettings() }
                 }
                 if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
-                Button("打开用户词典目录") { NSWorkspace.shared.open(AppPaths.rime) }
             }
         }.formStyle(.grouped)
+    }
+
+    private func scriptButton(_ title: String, simplified: Bool) -> some View {
+        let selected = settings.value.simplified == simplified
+        return Button {
+            settings.value.simplified = simplified
+        } label: {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .frame(width: 50, height: 24)
+                .background {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(red: 95.0 / 255, green: 83.0 / 255, blue: 239.0 / 255))
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -199,7 +228,7 @@ private struct VoiceSettings: View {
     @State private var permission = AVCaptureDevice.authorizationStatus(for: .audio)
     var body: some View {
         Form {
-            Section("语音识别 · ASR") {
+            Section("语音识别") {
                 Picker("服务商", selection: $settings.value.provider) { ForEach(ASRProvider.allCases) { Text($0.title).tag($0) } }.disabled(voice.busy)
                 LabeledContent("模型名称", value: settings.value.provider.modelTitle)
                 LabeledContent("模型 ID", value: settings.value.provider.modelID)
@@ -221,13 +250,15 @@ private struct VoiceSettings: View {
                 }
                 SecureField(asrKeyLabel, text: $asrKey)
                 HStack {
-                    Button("保存 ASR 密钥") { save(asrKey, account: asrAccount) }
+                    Button("保存密钥") { save(asrKey, account: asrAccount) }
                     if settings.value.provider == .doubao {
                         Button(testingConnection ? "连接中…" : "测试连接") { testConnection() }
                             .disabled(voice.busy || testingConnection)
                     }
                 }
-                Text(asrHelp).font(.caption).foregroundStyle(.secondary)
+                if settings.value.provider == .doubao {
+                    Text("使用小时版，按语音时长计费。").font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("麦克风与录音测试") {
                 HStack {
@@ -236,25 +267,23 @@ private struct VoiceSettings: View {
                     Button("启用麦克风") { Task { _ = await AVCaptureDevice.requestAccess(for: .audio); permission = AVCaptureDevice.authorizationStatus(for: .audio); if permission == .denied { message = "请在系统设置 → 隐私与安全性 → 麦克风中允许 VoiceText。" } } }
                 }
                 HStack {
-                    Button(voice.phase == .recording ? "结束录音" : "测试录音") { voice.toggle() }.disabled(testingConnection || (voice.busy && voice.phase != .recording))
-                    if voice.busy { Button("取消") { voice.cancel() }; ProgressView().controlSize(.small) }
-                    Text(voice.status).font(.caption).foregroundStyle(.secondary)
+                    Button(voice.phase == .recording ? "结束录音" : "测试录音") { voice.toggle(testRecording: true) }.disabled(testingConnection || (voice.busy && voice.phase != .recording))
+                    if voice.canCancel { Button("取消") { voice.cancel() } }
+                    if voice.busy { ProgressView().controlSize(.small) }
+                    if voice.showsStatusInSettings && !voice.status.isEmpty { Text(voice.status).font(.caption).foregroundStyle(.secondary) }
                 }
-                Text("最长三分钟。测试结果保存到历史，设置窗口不会接收自动回填。").font(.caption).foregroundStyle(.secondary)
             }
-            Section("可选文本整理") {
-                Toggle("识别后整理标点、口误和重复", isOn: $settings.value.cleanupEnabled)
+            Section("文本整理") {
+                Toggle("识别后整理标点和口误", isOn: $settings.value.cleanupEnabled)
                 if settings.value.cleanupEnabled {
                     TextField("文本整理接口完整地址", text: $settings.value.cleanup.endpoint)
                     TextField("文本模型名称", text: $settings.value.cleanup.model)
                     SecureField("文本整理 API Key", text: $cleanupKey)
                     Button("保存整理密钥") { save(cleanupKey, account: "cleanup") }
+                    Text("整理失败时使用原始转写。").font(.caption).foregroundStyle(.secondary)
                 }
-                Text("只发送本次识别文本。整理失败时使用原始转写；关闭后不调用文本模型。").font(.caption).foregroundStyle(.secondary)
             }
             if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
-            Text("密钥保存在仅当前账户可读的本地文件中，不使用钥匙串加密。识别文本长期保存在本机历史；音频不长期保存。清空密钥后点击保存可删除凭据。")
-                .font(.caption).foregroundStyle(.secondary)
         }.formStyle(.grouped)
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 permission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -280,14 +309,6 @@ private struct VoiceSettings: View {
         }
     }
 
-    private var asrHelp: String {
-        switch settings.value.provider {
-        case .doubao: return "使用小时版，按语音时长计费。"
-        case .qwen: return "请使用华北2（北京）的业务空间 ID 和 API Key。录音结束后提交转写。"
-        case .tencent: return "请先开通腾讯云语音识别服务。录音时实时发送音频，结束后获取完整结果。"
-        }
-    }
-
     private func testConnection() {
         let configuration = settings.value
         let account = asrAccount
@@ -298,7 +319,7 @@ private struct VoiceSettings: View {
             var session: DoubaoSession?
             do {
                 let key = try CredentialStore.shared.read(account)
-                guard !key.isEmpty else { throw VoiceTextError.message("请先填写并保存 ASR 密钥，再测试连接。") }
+                guard !key.isEmpty else { throw VoiceTextError.message("请先填写并保存密钥，再测试连接。") }
                 let connection = DoubaoSession(configuration: configuration.doubao, key: key,
                     appID: configuration.doubaoLegacyAuth == true ? (configuration.doubaoAppID ?? "") : nil)
                 session = connection

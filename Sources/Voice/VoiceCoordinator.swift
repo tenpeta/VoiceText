@@ -57,7 +57,8 @@ actor VoiceAudioSink {
 @MainActor
 final class VoiceCoordinator: ObservableObject {
     @Published private(set) var phase: VoicePhase = .idle
-    @Published private(set) var status = "准备就绪"
+    @Published private(set) var status = ""
+    private(set) var showsStatusInSettings = true
     @Published private(set) var seconds = 0
     @Published private(set) var lastText = ""
     private(set) var needsCopy = false
@@ -76,11 +77,14 @@ final class VoiceCoordinator: ObservableObject {
 
     init(settings: AppSettings, history: HistoryStore) { self.settings = settings; self.history = history }
     var busy: Bool { phase != .idle }
-    func toggle() {
+    private var savingTestResult = false
+    var canCancel: Bool { busy && !cancelling && !savingTestResult }
+
+    func toggle(testRecording: Bool = false) {
         if phase == .recording { stop() }
-        else if !busy { start() }
+        else if !busy { start(testRecording: testRecording) }
     }
-    func start() {
+    func start(testRecording: Bool = false) {
         guard !busy else { return }
         needsCopy = false; hasError = false
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
@@ -106,7 +110,7 @@ final class VoiceCoordinator: ObservableObject {
                 try await sink.start(); try Task.checkCancellation()
                 guard self.generation == id else { throw CancellationError() }
                 let audio = try capture.start()
-                update(.recording, "正在录音 · 再按快捷键结束")
+                update(.recording, "正在录音")
                 clock = Task {
                     do {
                         while !Task.isCancelled {
@@ -129,11 +133,13 @@ final class VoiceCoordinator: ObservableObject {
                 lastText = result.text
                 var warning: String?
                 var recordID: String?
-                do { recordID = try await history.insert(result) }
-                catch { warning = "历史保存失败，当前结果仍可复制。" }
-                NotificationCenter.default.post(name: .voiceTextHistoryChanged, object: nil)
-                try Task.checkCancellation()
-                guard generation == id else { throw CancellationError() }
+                if !testRecording {
+                    do { recordID = try await history.insert(result) }
+                    catch { warning = "历史保存失败，当前结果仍可复制。" }
+                    NotificationCenter.default.post(name: .voiceTextHistoryChanged, object: nil)
+                    try Task.checkCancellation()
+                    guard generation == id else { throw CancellationError() }
+                }
                 if configuration.cleanupEnabled {
                     update(.cleaning, "正在整理文本…")
                     do {
@@ -156,7 +162,13 @@ final class VoiceCoordinator: ObservableObject {
                 }
                 try Task.checkCancellation()
                 guard generation == id else { throw CancellationError() }
-                let submitted = await insertText?(lastText) ?? false
+                if testRecording {
+                    savingTestResult = true
+                    update(.recognizing, "正在保存测试结果…")
+                    do { _ = try await history.insert(result, finalText: lastText) }
+                    catch { warning = "历史保存失败，当前结果仍可复制。" }
+                }
+                let submitted = testRecording ? false : (await insertText?(lastText) ?? false)
                 try Task.checkCancellation()
                 guard generation == id else { throw CancellationError() }
                 needsCopy = !submitted && !lastText.isEmpty
@@ -164,14 +176,15 @@ final class VoiceCoordinator: ObservableObject {
                 await sink.cancel()
                 guard generation == id else { return }
                 self.capture = nil; self.sink = nil; self.pump = nil; self.task = nil; self.generation = nil
-                update(.idle, warning ?? (submitted ? "已发送到当前文本框 · 历史中可复制" : "结果已保存 · 点击复制或打开历史"))
+                savingTestResult = false
+                update(.idle, warning ?? "录音已结束", showInSettings: warning != nil)
             } catch {
                 await capture.stop(); await sink.cancel()
                 guard generation == id else { return }
                 clock?.cancel(); clock = nil
                 self.capture = nil; self.sink = nil; self.pump = nil; self.task = nil; generation = nil
-                if error is CancellationError { update(.idle, "已取消录音") }
-                else if (error as? VoiceTextError) == .noSpeech { update(.idle, "准备就绪") }
+                if error is CancellationError { update(.idle, "已取消", showInSettings: false) }
+                else if (error as? VoiceTextError) == .noSpeech { update(.idle, "录音已结束", showInSettings: false) }
                 else { hasError = true; update(.idle, error.localizedDescription) }
             }
         }
@@ -184,7 +197,7 @@ final class VoiceCoordinator: ObservableObject {
         Task { await capture?.stop() }
     }
     func cancel() {
-        guard busy, !cancelling else { return }
+        guard canCancel else { return }
         cancelling = true
         generation = nil
         task?.cancel(); task = nil; pump?.cancel(); pump = nil
@@ -196,13 +209,14 @@ final class VoiceCoordinator: ObservableObject {
         Task {
             await sink?.cancel(); await capture?.stop()
             cancelling = false
-            update(.idle, "已取消 · 已识别的文字仍保留在历史中")
+            update(.idle, "已取消", showInSettings: false)
         }
     }
     func inputSourceDidChange(selected: Bool) {
         if !selected && (phase == .recording || phase == .connecting) { cancel() }
     }
-    private func update(_ phase: VoicePhase, _ text: String) {
+    private func update(_ phase: VoicePhase, _ text: String, showInSettings: Bool = true) {
+        showsStatusInSettings = showInSettings
         self.phase = phase; status = text; didChange?()
     }
 }
