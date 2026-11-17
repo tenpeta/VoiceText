@@ -1,15 +1,29 @@
-# VoiceText
+<p align="center">
+  <img src="docs/images/app-icon.png" width="128" height="128" alt="VoiceText 应用图标">
+</p>
 
-VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云端语音听写。使用 Swift、InputMethodKit 和 AppKit 开发。
+<h1 align="center">VoiceText</h1>
+
+<p align="center"><strong>把云端语音听写直接融入 macOS 中文输入法</strong></p>
+
+VoiceText 是一款轻量的原生 macOS 输入法。平时用 Rime 打拼音，想用语音时轻按右 Option 即可开始听写，再按一次结束。识别结果可以直接输入到当前文本框。
+
+## 预览
+
+**语音听写**
+
+<img src="docs/images/voice-dictation.gif" width="400" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
+
+**拼音输入**
 
 <img src="docs/images/pinyin-candidates.png" width="400" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
 
 ## 功能
 
+- **语音听写**：支持火山引擎、阿里云百炼和腾讯云，默认轻按右 Option 开始，再按一次结束，Esc 取消；快捷键可更改。
 - **中文输入**：支持白霜方案中的全拼、简拼、`u/v` 兼容和手滑纠错。连续输入可生成最多 3 条整句候选，支持词频学习、简繁转换和中英文标点。
 - **候选窗口**：支持横排或竖排、浅色或深色，以及字体、字号、圆角和间距设置；可展开多行候选。
 - **中英文切换**：轻按左侧或右侧 Shift；用 Shift 输入大写或组合键时不会切换。
-- **语音听写**：支持火山引擎、阿里云百炼和腾讯云，默认轻按右 Option 开始，再按一次结束，Esc 取消；快捷键可更改。
 - **文本整理**：可选地用单独配置的文本模型整理转写结果，默认关闭；整理失败时保留原始转写。
 - **语音历史**：在本机保存原始转写和最终文本，支持复制、删除和清空。
 
@@ -47,10 +61,6 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 
 ## 使用语音听写
 
-默认轻按右 Option 开始录音，再按一次结束。下面演示了如何把识别结果输入到备忘录。
-
-<img src="docs/images/voice-dictation.gif" width="400" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
-
 在设置的「语音」页选择服务商，填写对应凭据并保存密钥，然后启用麦克风试录。单次录音最长三分钟，调用云服务可能产生费用。
 
 | 服务商 | 模型 | 配置 |
@@ -64,6 +74,8 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 识别完成后，文本会发送到当时的活动文本框；等待期间可以移动光标或切换应用。如果没有可靠的活动输入目标、已切换到其他输入法或正在应用设置中，结果会显示在可复制的面板中。输入法无法通用地确认目标应用是否接收了文字，因此界面显示「已发送」。密码框和特殊编辑器等场景需要实际验证。
 
 ## 输入方案
+
+VoiceText 使用 Swift、InputMethodKit 和 AppKit 开发。
 
 中文词库选用白霜的 `8105`、`base`、`ext` 和 `others`，整句候选使用随包提供的 `zh-moqi` 模型。中文模式下可直接选择 `melt_eng` 提供的英文单词。中文和英文候选的初始权重分别为 1.2 和 0.7。降权名单中的英文候选排得过靠前时会按白霜规则后移。
 
