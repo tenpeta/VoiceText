@@ -2,7 +2,7 @@
 
 VoiceText 是一款原生 macOS 中文输入法，结合 Rime 拼音输入和云端语音听写。使用 Swift、InputMethodKit 和 AppKit 开发。
 
-<img src="docs/images/pinyin-candidates.png" width="720" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
+<img src="docs/images/pinyin-candidates.png" width="400" alt="在 macOS 备忘录输入 ni hao 时显示的 VoiceText 拼音候选窗">
 
 ## 功能
 
@@ -49,7 +49,7 @@ build/DerivedData/Build/Products/Release/VoiceText.app
 
 默认轻按右 Option 开始录音，再按一次结束。下面演示了如何把识别结果输入到备忘录。
 
-<img src="docs/images/voice-dictation.gif" width="720" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
+<img src="docs/images/voice-dictation.gif" width="400" alt="语音听写演示，结束录音后备忘录插入「欢迎使用 Voice Text。」">
 
 在设置的「语音」页选择服务商，填写对应凭据并保存密钥，然后启用麦克风试录。单次录音最长三分钟，调用云服务可能产生费用。
 
