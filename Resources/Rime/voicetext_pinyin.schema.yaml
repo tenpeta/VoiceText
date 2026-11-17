@@ -2,7 +2,7 @@
 schema:
   schema_id: voicetext_pinyin
   name: VoiceText 全拼
-  version: '1.5'
+  version: '1.6'
   dependencies: [melt_eng]
 switches:
   - name: normalize_chinese
@@ -154,6 +154,15 @@ punctuator:
     ')': '）'
     '[': '【'
     ']': '】'
+    '{': { commit: '「' }
+    '}': { commit: '」' }
+    '`': { commit: '·' }
+    '~': { commit: '～' }
+    '$': { commit: '￥' }
+    '%': { commit: '％' }
+    '^': { commit: '……' }
+    '_': { commit: '——' }
+    '|': { commit: '｜' }
     '"': { pair: ['“', '”'] }
     "'": { pair: ['‘', '’'] }
     '<': '《'

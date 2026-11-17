@@ -67,8 +67,32 @@ static int check_ascii_mode(void) {
   return ok;
 }
 
+static int check_chinese_punctuation(void) {
+  VTSessionID session = vt_rime_session();
+  if (!session) return 0;
+  vt_rime_option(session, "ascii_punct", 0);
+  const struct { int key, modifiers; const char *expected; } cases[] = {
+    {'{', 1, "「"}, {'}', 1, "」"}, {'`', 0, "·"}, {'~', 1, "～"},
+    {'$', 1, "￥"}, {'%', 1, "％"}, {'^', 1, "……"}, {'_', 1, "——"},
+    {'|', 1, "｜"},
+  };
+  int ok = 1;
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    int handled = vt_rime_key(session, cases[i].key, cases[i].modifiers);
+    char *commit = vt_rime_take_commit(session);
+    if (!handled || !commit || strcmp(commit, cases[i].expected)) {
+      fprintf(stderr, "Unexpected punctuation for %c: %s\n", cases[i].key, commit ? commit : "(no commit)");
+      ok = 0;
+    }
+    vt_rime_free_string(commit);
+  }
+  vt_rime_destroy(session);
+  return ok;
+}
+
 int main(int argc, char **argv) {
   if (argc != 4 || !vt_rime_start(argv[1], argv[2], argv[3])) return 1;
+  if (!check_chinese_punctuation()) return 21;
   if (!check_candidates("xiangmu", "项目", NULL, 0) ||
       !check_candidates("xaingmu", "项目", NULL, 0) ||
       !check_candidates("kuai", "快", NULL, 0) ||
