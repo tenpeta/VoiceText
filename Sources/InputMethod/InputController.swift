@@ -4,9 +4,11 @@ import InputMethodKit
 @MainActor
 @objc(VoiceTextInputController)
 final class InputController: IMKInputController {
+    private static let spotlightBundleIdentifiers: Set<String> = ["com.apple.Spotlight", "com.apple.campo"]
     private var shortcutTracker = SingleKeyShortcutTracker()
     private var session: RimeSession?
     private weak var textClient: IMKTextInput?
+    private var spotlightForegroundPID: pid_t?
     private var preedit = ""
     private var active = false
     private var candidateStart = 0
@@ -21,6 +23,7 @@ final class InputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         shortcutTracker.reset()
         active = true; textClient = sender as? IMKTextInput
+        rememberSpotlightForeground()
         AppRuntime.shared.activeController = self
         ensureSession(); applyOptions()
     }
@@ -30,7 +33,8 @@ final class InputController: IMKInputController {
         active = false; currentSnapshot = nil; candidateStart = 0
         AppRuntime.shared.candidates.hide(for: self)
         if AppRuntime.shared.activeController === self { AppRuntime.shared.activeController = nil }
-        textClient = nil; session?.close(); session = nil
+        textClient = nil; spotlightForegroundPID = nil
+        session?.close(); session = nil
     }
     override func inputControllerWillClose() { deactivateServer(nil) }
     override func hidePalettes() { AppRuntime.shared.candidates.hide(for: self) }
@@ -44,14 +48,21 @@ final class InputController: IMKInputController {
         runtime.activeController = self
         if event.type == .flagsChanged {
             if let key = shortcutTracker.releasedKey(for: event) {
-                if key == runtime.settings.value.voiceKeyCode { runtime.voice.toggle() }
+                if key == runtime.settings.value.voiceKeyCode {
+                    rememberSpotlightForeground()
+                    runtime.voice.toggle()
+                }
                 else if key == 56 || key == 60 { toggleLanguage() }
             }
             return false
         }
         shortcutTracker.reset()
         if runtime.settings.matchesVoice(event) {
-            if !event.isARepeat { runtime.voice.toggle() }; return true
+            if !event.isARepeat {
+                rememberSpotlightForeground()
+                runtime.voice.toggle()
+            }
+            return true
         }
         if event.keyCode == 53, runtime.voice.busy { runtime.voice.cancel(); return true }
         if event.modifierFlags.contains(.command) { return false }
@@ -173,8 +184,7 @@ final class InputController: IMKInputController {
     func insertVoice(_ text: String) async -> Bool {
         let interval = Performance.voice.beginInterval("VoiceCommit")
         defer { Performance.voice.endInterval("VoiceCommit", interval) }
-        guard active, let textClient,
-              textClient.bundleIdentifier() == NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+        guard let textClient, isCurrentInputTarget(),
               textClient.bundleIdentifier() != Bundle.main.bundleIdentifier,
               InputInstaller.isSelected else { return false }
         finishComposition()
@@ -198,8 +208,21 @@ final class InputController: IMKInputController {
         return false
     }
 
-    func belongsToFrontmostApplication() -> Bool {
-        active && textClient?.bundleIdentifier() == NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    private func rememberSpotlightForeground() {
+        // Spotlight can receive keyboard input while another app remains frontmost.
+        guard let identifier = textClient?.bundleIdentifier(),
+              Self.spotlightBundleIdentifiers.contains(identifier) else {
+            spotlightForegroundPID = nil
+            return
+        }
+        spotlightForegroundPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
+
+    func isCurrentInputTarget() -> Bool {
+        guard active, let identifier = textClient?.bundleIdentifier(),
+              let frontmost = NSWorkspace.shared.frontmostApplication else { return false }
+        return identifier == frontmost.bundleIdentifier ||
+            (Self.spotlightBundleIdentifiers.contains(identifier) && spotlightForegroundPID == frontmost.processIdentifier)
     }
     private func commit(_ text: String) {
         guard !text.isEmpty else { return }

@@ -32,7 +32,7 @@ final class AppRuntime {
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.activeController?.belongsToFrontmostApplication() == false { self.activeController?.deactivateServer(nil) }
+                if self.activeController?.isCurrentInputTarget() == false { self.activeController?.deactivateServer(nil) }
             }
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
