@@ -1,12 +1,61 @@
 import Foundation
 
+struct SpeechHotwords {
+    static let limit = 128
+    let words: [String]
+    let skippedCount: Int
+
+    init(_ text: String, provider: ASRProvider) {
+        var words: [String] = []
+        var skippedCount = 0
+        for word in Self.entries(in: text) {
+            if words.count < Self.limit && Self.isCompatible(word, provider: provider) {
+                words.append(word)
+            } else {
+                skippedCount += 1
+            }
+        }
+        self.words = words
+        self.skippedCount = skippedCount
+    }
+
+    static func entries(in text: String) -> [String] {
+        var seen: Set<String> = []
+        return text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    private static func isCompatible(_ word: String, provider: ASRProvider) -> Bool {
+        guard word.rangeOfCharacter(from: .controlCharacters) == nil else { return false }
+        switch provider {
+        case .doubao:
+            return true
+        case .qwen:
+            if word.utf8.allSatisfy({ $0 < 128 }) {
+                return word.split(separator: " ").count <= 7
+            }
+            return word.count <= 15
+        case .tencent:
+            return word.count <= 30
+                && word.rangeOfCharacter(from: .whitespaces) == nil
+                && !word.contains(",") && !word.contains("|")
+                && word.range(of: #"\p{Han}(?:.*\p{Han}){10}"#, options: .regularExpression) == nil
+        }
+    }
+}
+
 enum ASRRequests {
-    static func qwenBody(wav: Data, model: String) throws -> Data {
+    static func qwenBody(wav: Data, model: String, hotwords: [String] = []) throws -> Data {
         let audio = ["type": "input_audio", "input_audio": ["data": "data:audio/wav;base64," + wav.base64EncodedString()]] as [String: Any]
+        var parameters: [String: Any] = ["format": "wav", "sample_rate": "16000"]
+        if !hotwords.isEmpty {
+            parameters["vocabulary"] = Dictionary(hotwords.map { ($0, 4) }, uniquingKeysWith: { first, _ in first })
+        }
         return try JSONSerialization.data(withJSONObject: [
             "model": model,
             "input": ["messages": [["role": "user", "content": [audio]]]],
-            "parameters": ["format": "wav", "sample_rate": "16000"]
+            "parameters": parameters
         ])
     }
 

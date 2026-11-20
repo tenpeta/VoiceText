@@ -9,8 +9,8 @@ actor TencentSession {
     private var failure: Error?
     private var finishing = false
 
-    init(configuration: ServiceConfiguration, appID: String, secretID: String, secretKey: String) throws {
-        let url = try Self.signedURL(configuration: configuration, appID: appID, secretID: secretID, secretKey: secretKey)
+    init(configuration: ServiceConfiguration, appID: String, secretID: String, secretKey: String, hotwords: [String] = []) throws {
+        let url = try Self.signedURL(configuration: configuration, appID: appID, secretID: secretID, secretKey: secretKey, hotwords: hotwords)
         let session = NetworkSession.make(resourceTimeout: 240)
         self.session = session
         socket = session.webSocketTask(with: url)
@@ -18,7 +18,7 @@ actor TencentSession {
     }
 
     static func signedURL(configuration: ServiceConfiguration, appID: String, secretID: String, secretKey: String,
-                          timestamp: Int = Int(Date().timeIntervalSince1970), nonce: Int = Int.random(in: 1...Int(Int32.max)),
+                          hotwords: [String] = [], timestamp: Int = Int(Date().timeIntervalSince1970), nonce: Int = Int.random(in: 1...Int(Int32.max)),
                           voiceID: String = UUID().uuidString) throws -> URL {
         let appID = appID.trimmingCharacters(in: .whitespacesAndNewlines)
         let secretID = secretID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -29,7 +29,7 @@ actor TencentSession {
         }
 
         let endpoint = try configuration.url(streaming: true).absoluteString
-        let query = [
+        var parameters = [
             "engine_model_type": configuration.model,
             "expired": String(timestamp + 600),
             "nonce": String(nonce),
@@ -37,14 +37,24 @@ actor TencentSession {
             "timestamp": String(timestamp),
             "voice_format": "1",
             "voice_id": voiceID
-        ].sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
-        let unsigned = "\(endpoint)/\(appID)?\(query)"
+        ]
+        if !hotwords.isEmpty {
+            parameters["hotword_list"] = hotwords.map { "\($0)|5" }.joined(separator: ",")
+        }
+        let sorted = parameters.sorted { $0.key < $1.key }
+        let query = sorted.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+        let base = "\(endpoint)/\(appID)?"
+        let unsigned = base + query
         let signature = HMAC<Insecure.SHA1>.authenticationCode(
             for: Data(unsigned.dropFirst("wss://".count).utf8),
             using: SymmetricKey(data: Data(secretKey.utf8))
         )
         let encoded = Data(signature).base64EncodedString().addingPercentEncoding(withAllowedCharacters: .alphanumerics)
-        guard let encoded, let url = URL(string: "\(unsigned)&signature=\(encoded)") else {
+        let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+        let encodedQuery = sorted.map { key, value in
+            "\(key)=\(value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value)"
+        }.joined(separator: "&")
+        guard let encoded, let url = URL(string: "\(base)\(encodedQuery)&signature=\(encoded)") else {
             throw VoiceTextError.message("无法生成腾讯云识别请求。")
         }
         return url

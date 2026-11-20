@@ -194,6 +194,40 @@ final class VoiceTextCoreTests: XCTestCase {
         XCTAssertEqual(try ServiceConfiguration.preset(.doubao).url(streaming: true).scheme, "wss")
     }
 
+    func testSharedHotwordsInAllRecognitionRequests() throws {
+        let text = " Codex \r\n语音识别\nCodex\n\nC++\nClaude Code"
+        let hotwords = SpeechHotwords(text, provider: .doubao)
+        XCTAssertEqual(hotwords.words, ["Codex", "语音识别", "C++", "Claude Code"])
+        XCTAssertEqual(hotwords.skippedCount, 0)
+        let qwenHotwords = SpeechHotwords(text, provider: .qwen)
+        XCTAssertEqual(qwenHotwords.words, hotwords.words)
+        let tencentHotwords = SpeechHotwords(text + "\nbad,word\nbad|word\n一二三四五六七八九十甲", provider: .tencent)
+        XCTAssertEqual(tencentHotwords.words, ["Codex", "语音识别", "C++"])
+        XCTAssertEqual(tencentHotwords.skippedCount, 4)
+
+        let frame = try DoubaoProtocol.request(hotwords: hotwords.words)
+        let body = try DoubaoProtocol.gunzip(Data(frame.dropFirst(8)))
+        let doubao = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let request = try XCTUnwrap(doubao["request"] as? [String: Any])
+        let corpus = try XCTUnwrap(request["corpus"] as? [String: String])
+        let context = try XCTUnwrap(corpus["context"])
+        let decoded = try JSONSerialization.jsonObject(with: Data(context.utf8)) as? [String: [[String: String]]]
+        XCTAssertEqual(decoded?["hotwords"]?.compactMap { $0["word"] }, hotwords.words)
+
+        let qwenBody = try ASRRequests.qwenBody(wav: Data(), model: ASRProvider.qwen.defaultModel, hotwords: qwenHotwords.words)
+        let qwen = try JSONSerialization.jsonObject(with: qwenBody) as? [String: Any]
+        let parameters = qwen?["parameters"] as? [String: Any]
+        XCTAssertEqual(parameters?["vocabulary"] as? [String: Int], ["Codex": 4, "语音识别": 4, "C++": 4, "Claude Code": 4])
+
+        let url = try TencentSession.signedURL(configuration: .preset(.tencent), appID: "123456",
+                                              secretID: "TestID", secretKey: "test-key", hotwords: tencentHotwords.words,
+                                              timestamp: 1700000000, nonce: 42, voiceID: "voice-test")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(items?.first { $0.name == "hotword_list" }?.value, "Codex|5,语音识别|5,C++|5")
+        XCTAssertTrue(url.absoluteString.contains("C%2B%2B"))
+        XCTAssertEqual(items?.first { $0.name == "signature" }?.value, "dzuyy1bq90F/ss3tYlGUtkMQvSY=")
+    }
+
     func testWAVHeaderLengthAndCleanup() throws {
         let wave = try WAVFile()
         let url = wave.url

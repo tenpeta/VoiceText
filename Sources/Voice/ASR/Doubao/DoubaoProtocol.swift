@@ -7,12 +7,19 @@ enum DoubaoProtocol {
         let final: Bool
     }
 
-    static func request() throws -> Data {
+    static func request(hotwords: [String] = []) throws -> Data {
+        var request: [String: Any] = [
+            "model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
+            "enable_ddc": false, "show_utterances": false
+        ]
+        if !hotwords.isEmpty {
+            let context = try JSONSerialization.data(withJSONObject: ["hotwords": hotwords.map { ["word": $0] }])
+            request["corpus"] = ["context": String(decoding: context, as: UTF8.self)]
+        }
         let body: [String: Any] = [
             "user": ["uid": "voicetext"],
             "audio": ["format": "pcm", "codec": "raw", "rate": 16000, "bits": 16, "channel": 1],
-            "request": ["model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
-                        "enable_ddc": false, "show_utterances": false]
+            "request": request
         ]
         return try frame(type: 1, flags: 0, serialization: 1, payload: JSONSerialization.data(withJSONObject: body))
     }

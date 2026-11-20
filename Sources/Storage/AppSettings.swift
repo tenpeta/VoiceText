@@ -77,6 +77,7 @@ struct SettingsValue: Codable {
     var asciiPunctuation = false
     var appearance = AppearanceSettings()
     var provider = ASRProvider.doubao
+    var speechHotwords: String? = nil
     var doubao = ServiceConfiguration.preset(.doubao)
     var doubaoLegacyAuth: Bool? = nil
     var doubaoAppID: String? = nil

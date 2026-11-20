@@ -7,6 +7,7 @@ actor VoiceAudioSink {
     private let settings: SettingsValue
     private let configuration: ServiceConfiguration
     private let key: String
+    private let hotwords: [String]
     private var doubao: DoubaoSession?
     private var tencent: TencentSession?
     private var file: WAVFile?
@@ -14,6 +15,7 @@ actor VoiceAudioSink {
 
     init(settings: SettingsValue, configuration: ServiceConfiguration, key: String) {
         self.settings = settings; self.configuration = configuration; self.key = key
+        hotwords = SpeechHotwords(settings.speechHotwords ?? "", provider: settings.provider).words
     }
 
     func start() async throws {
@@ -21,12 +23,12 @@ actor VoiceAudioSink {
         case .doubao:
             let appID = settings.doubaoLegacyAuth == true ? (settings.doubaoAppID ?? "") : nil
             let session = DoubaoSession(configuration: configuration, key: key, appID: appID)
-            doubao = session; try await session.start()
+            doubao = session; try await session.start(hotwords: hotwords)
         case .qwen:
             file = try WAVFile(directory: AppPaths.temporary)
         case .tencent:
             let session = try TencentSession(configuration: configuration, appID: settings.tencentAppID ?? "",
-                                             secretID: settings.tencentSecretID ?? "", secretKey: key)
+                                             secretID: settings.tencentSecretID ?? "", secretKey: key, hotwords: hotwords)
             tencent = session; try await session.start()
         }
     }
@@ -45,7 +47,7 @@ actor VoiceAudioSink {
         guard let file else { throw CancellationError() }
         defer { file.remove(); self.file = nil }
         try file.finish()
-        return try await HTTPService.recognizeQwen(file: file.url, configuration: configuration, key: key)
+        return try await HTTPService.recognizeQwen(file: file.url, configuration: configuration, key: key, hotwords: hotwords)
     }
     func cancel() async {
         await doubao?.cancel(); doubao = nil

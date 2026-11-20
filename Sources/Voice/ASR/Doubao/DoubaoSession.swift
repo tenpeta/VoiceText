@@ -71,7 +71,7 @@ actor DoubaoSession {
         self.configuration = configuration; self.key = key; self.appID = appID; self.finalTimeout = finalTimeout; self.sendTimeout = sendTimeout; self.makeTransport = makeTransport
     }
 
-    func start() async throws {
+    func start(hotwords: [String] = []) async throws {
         let interval = Performance.voice.beginInterval("ConnectASR")
         defer { Performance.voice.endInterval("ConnectASR", interval) }
         try Task.checkCancellation()
@@ -86,7 +86,7 @@ actor DoubaoSession {
         do {
             try await transport.connect()
             if let terminal { _ = try terminal.get() }
-            try await transport.send(DoubaoProtocol.request())
+            try await transport.send(DoubaoProtocol.request(hotwords: hotwords))
         } catch {
             complete(.failure(error)); throw recordedFailure ?? error
         }

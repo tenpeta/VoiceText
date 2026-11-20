@@ -2,11 +2,43 @@ import AppKit
 import SwiftUI
 import AVFoundation
 
+private final class SettingsWindow: NSWindow {
+    override func sendEvent(_ event: NSEvent) {
+        let isMouseDown = event.type == .leftMouseDown || event.type == .rightMouseDown
+        if isMouseDown, event.window === self, let editingView = activeEditingView {
+            let point = editingView.convert(event.locationInWindow, from: nil)
+            if !editingView.visibleRect.contains(point) {
+                makeFirstResponder(nil)
+            }
+        }
+
+        super.sendEvent(event)
+
+        if event.type == .leftMouseUp, event.window === self, activeEditor == nil,
+           (firstResponder as? ShortcutRecorderButton)?.listening != true {
+            makeFirstResponder(nil)
+        }
+    }
+
+    private var activeEditingView: NSView? {
+        if let recorder = firstResponder as? ShortcutRecorderButton, recorder.listening {
+            return recorder
+        }
+        guard let editor = activeEditor else { return nil }
+        return editor.isFieldEditor ? (editor.delegate as? NSView ?? editor) : editor
+    }
+
+    private var activeEditor: NSTextView? {
+        guard let editor = firstResponder as? NSTextView, editor.isEditable else { return nil }
+        return editor
+    }
+}
+
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
     init(settings: AppSettings, voice: VoiceCoordinator, engine: RimeEngine) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
+        let window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "VoiceText"; window.minSize = NSSize(width: 760, height: 540)
         window.titlebarAppearsTransparent = true; window.isReleasedWhenClosed = false
@@ -127,6 +159,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
     func makeNSView(context: Context) -> ShortcutRecorderButton {
         let button = ShortcutRecorderButton()
         button.bezelStyle = .rounded
+        button.focusRingType = .none
         return button
     }
 
@@ -162,7 +195,10 @@ private final class ShortcutRecorderButton: NSButton {
     override func keyDown(with event: NSEvent) {
         guard listening else { super.keyDown(with: event); return }
         tracker.reset()
-        if event.keyCode == 53 { stopRecording(); return }
+        if event.keyCode == 53 {
+            window?.makeFirstResponder(nil)
+            return
+        }
         guard !event.isARepeat,
               event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
             title = "请单独按一个键"; return
@@ -183,6 +219,7 @@ private final class ShortcutRecorderButton: NSButton {
         listening = false; tracker.reset()
         savedTitle = name; title = name + " · 点击设置"
         onCapture?(code, name)
+        window?.makeFirstResponder(nil)
     }
 
     private func stopRecording() {
@@ -218,18 +255,303 @@ private struct SliderRow: View {
     var body: some View { LabeledContent(title) { Slider(value: $value, in: range, step: 1).frame(maxWidth: 200); Text("\(Int(value))").monospacedDigit().frame(width: 26) } }
 }
 
+private struct SpeechVocabularySettings: View {
+    @Binding var text: String
+    let provider: ASRProvider
+    @State private var newWord = ""
+    @State private var reorder: ReorderPreview?
+
+    private struct ReorderPreview {
+        let word: String
+        let origin: CGRect
+        var entries: [String]
+        var translation: CGSize = .zero
+    }
+    @State private var tagFrames: [String: CGRect] = [:]
+    @GestureState private var draggedWord: String?
+    @State private var editor: Editor?
+    @State private var draft = ""
+
+    private enum Editor: Identifiable {
+        case edit(String), bulk
+        var id: String {
+            switch self {
+            case .edit(let word): return "edit-\(word)"
+            case .bulk: return "bulk"
+            }
+        }
+    }
+
+    var body: some View {
+        let entries = SpeechHotwords.entries(in: text)
+        let active = Set(SpeechHotwords(text, provider: provider).words)
+        Section("语音词表") {
+            HStack {
+                Text("输入词或短语")
+                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
+                TextField("", text: $newWord)
+                    .accessibilityLabel("输入词或短语")
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .focusEffectDisabled()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color(nsColor: .separatorColor))
+                            .allowsHitTesting(false)
+                    }
+                    .frame(width: 140)
+                    .onSubmit(addWord)
+                Button("添加", action: addWord)
+                    .disabled(SpeechHotwords.entries(in: newWord).isEmpty)
+                Button("批量添加…") {
+                    draft = ""
+                    editor = .bulk
+                }
+            }
+            if !entries.isEmpty {
+                VocabularyTagLayout {
+                    ForEach(reorder?.entries ?? entries, id: \.self) { word in
+                        tag(word, active: active.contains(word))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .topLeading) {
+                    if let reorder {
+                        tagContent(reorder.word, active: active.contains(reorder.word))
+                            .frame(width: reorder.origin.width, height: reorder.origin.height)
+                            .offset(x: reorder.origin.minX + reorder.translation.width,
+                                    y: reorder.origin.minY + reorder.translation.height)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .coordinateSpace(name: "VocabularyTags")
+            }
+            Text("添加易误识别的词语或专有名词。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if active.count < entries.count {
+                Text("带提示图标的词条仍在词表中，当前服务商会跳过。\(providerLimits)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onChange(of: draggedWord) {
+            if draggedWord == nil { reorder = nil }
+        }
+        .sheet(item: $editor) { mode in
+            VStack(alignment: .leading, spacing: 12) {
+                switch mode {
+                case .edit:
+                    Text("编辑词条").font(.headline)
+                    TextField("词或短语", text: $draft)
+                        .autocorrectionDisabled()
+                case .bulk:
+                    Text("批量添加词条").font(.headline)
+                    Text("每行粘贴一个词或短语。").foregroundStyle(.secondary)
+                    TextEditor(text: $draft)
+                        .autocorrectionDisabled()
+                        .accessibilityLabel("待添加的词条")
+                        .frame(height: 150)
+                }
+                HStack {
+                    Spacer()
+                    Button("取消") { editor = nil }
+                        .keyboardShortcut(.cancelAction)
+                    Button(sheetActionTitle(mode)) { saveDraft(mode) }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(SpeechHotwords.entries(in: draft).isEmpty)
+                }
+            }
+            .padding(20)
+            .frame(width: 420)
+        }
+    }
+
+    private var providerLimits: String {
+        let limit = "最多发送 \(SpeechHotwords.limit) 个词条。"
+        switch provider {
+        case .doubao: return limit
+        case .qwen: return limit + "英文短语最多 7 个单词，含中文等非 ASCII 字符时最多 15 个字符。"
+        case .tencent: return limit + "腾讯云要求每条最多 30 个字符（最多 10 个汉字），且不能含空格、英文逗号或竖线。"
+        }
+    }
+
+    private func tag(_ word: String, active: Bool) -> some View {
+        tagContent(word, active: active)
+            .contentShape(Rectangle())
+            .opacity(reorder?.word == word ? 0 : 1)
+            .onGeometryChange(for: CGRect.self) { geometry in
+                geometry.frame(in: .named("VocabularyTags"))
+            } action: { frame in
+                tagFrames[word] = frame
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 5, coordinateSpace: .named("VocabularyTags"))
+                    .updating($draggedWord) { _, current, _ in current = word }
+                    .onChanged { drag in updateReorder(word, drag: drag) }
+                    .onEnded { drag in
+                        updateReorder(word, drag: drag)
+                        if let reorder {
+                            text = reorder.entries.joined(separator: "\n")
+                        }
+                        reorder = nil
+                    }
+            )
+    }
+
+    private func tagContent(_ word: String, active: Bool) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                if !active {
+                    Image(systemName: "exclamationmark.circle")
+                }
+                Text(word).multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(active ? .primary : .secondary)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                draft = word
+                editor = .edit(word)
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                draft = word
+                editor = .edit(word)
+            }
+            .help(active ? "编辑 \(word)" : "当前服务商会跳过此词条。\(providerLimits)")
+            .accessibilityLabel("编辑 \(word)")
+            .accessibilityHint(active ? "" : "当前服务商会跳过此词条")
+
+            Button {
+                text = SpeechHotwords.entries(in: text).filter { $0 != word }.joined(separator: "\n")
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .help("删除 \(word)")
+            .accessibilityLabel("删除 \(word)")
+        }
+        .buttonStyle(.borderless)
+        .padding(.leading, 9)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func updateReorder(_ word: String, drag: DragGesture.Value) {
+        guard let origin = tagFrames[word] else { return }
+        var preview = reorder ?? ReorderPreview(word: word, origin: origin,
+                                                entries: SpeechHotwords.entries(in: text))
+        preview.translation = drag.translation
+        guard let source = preview.entries.firstIndex(of: word),
+              let target = preview.entries.indices.first(where: { index in
+                  guard index != source, let frame = tagFrames[preview.entries[index]],
+                        frame.insetBy(dx: -3, dy: -3).contains(drag.location) else { return false }
+                  return index < source ? drag.location.x <= frame.midX : drag.location.x >= frame.midX
+              }) else {
+            reorder = preview
+            return
+        }
+        preview.entries.remove(at: source)
+        preview.entries.insert(word, at: target)
+        withAnimation(.easeInOut(duration: 0.15)) {
+            reorder = preview
+        }
+    }
+
+    private func addWord() {
+        append(SpeechHotwords.entries(in: newWord))
+        newWord = ""
+    }
+
+    private func append(_ entries: [String]) {
+        guard !entries.isEmpty else { return }
+        text = SpeechHotwords.entries(in: ([text] + entries).joined(separator: "\n")).joined(separator: "\n")
+    }
+
+    private func sheetActionTitle(_ mode: Editor) -> String {
+        switch mode {
+        case .edit: return "保存"
+        case .bulk: return "添加"
+        }
+    }
+
+    private func saveDraft(_ mode: Editor) {
+        let entries = SpeechHotwords.entries(in: draft)
+        switch mode {
+        case .edit(let word):
+            guard let replacement = entries.first else { return }
+            let updated = SpeechHotwords.entries(in: text).map { $0 == word ? replacement : $0 }
+            text = SpeechHotwords.entries(in: updated.joined(separator: "\n")).joined(separator: "\n")
+        case .bulk:
+            append(entries)
+        }
+        editor = nil
+    }
+}
+
+private struct VocabularyTagLayout: Layout {
+    private let spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = arrangement(width: proposal.width ?? bounds.width, subviews: subviews).frames
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+        for subview in subviews {
+            let ideal = subview.sizeThatFits(.unspecified)
+            let size = ideal.width <= width
+                ? ideal
+                : subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+            if x > 0 && x + size.width > width {
+                y += rowHeight + spacing
+                x = 0
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            usedWidth = max(usedWidth, x + size.width)
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+        }
+        return (CGSize(width: usedWidth, height: y + rowHeight), frames)
+    }
+}
+
 private struct VoiceSettings: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var voice: VoiceCoordinator
     @State private var asrKey = ""
     @State private var cleanupKey = ""
     @State private var testingConnection = false
+    @State private var connectionPassed = false
+    @State private var connectionError: String?
     @State private var message = ""
     @State private var permission = AVCaptureDevice.authorizationStatus(for: .audio)
     var body: some View {
         Form {
             Section("语音识别") {
-                Picker("服务商", selection: $settings.value.provider) { ForEach(ASRProvider.allCases) { Text($0.title).tag($0) } }.disabled(voice.busy)
+                Picker("服务商", selection: $settings.value.provider) { ForEach(ASRProvider.allCases) { Text($0.title).tag($0) } }.disabled(voice.busy || testingConnection)
                 LabeledContent("模型名称", value: settings.value.provider.modelTitle)
                 LabeledContent("模型 ID", value: settings.value.provider.modelID)
                 switch settings.value.provider {
@@ -250,16 +572,31 @@ private struct VoiceSettings: View {
                 }
                 SecureField(asrKeyLabel, text: $asrKey)
                 HStack {
-                    Button("保存密钥") { save(asrKey, account: asrAccount) }
-                    if settings.value.provider == .doubao {
-                        Button(testingConnection ? "连接中…" : "测试连接") { testConnection() }
-                            .disabled(voice.busy || testingConnection)
+                    Button("保存密钥") {
+                        resetConnectionResult()
+                        save(asrKey, account: asrAccount)
                     }
+                    .disabled(testingConnection)
+                    Button(testingConnection ? "连接中…" : "测试连接") { testConnection() }
+                        .disabled(voice.busy || testingConnection)
+                    if connectionPassed {
+                        Image(systemName: "checkmark.circle.fill")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.secondary)
+                            .help("连接测试通过")
+                            .accessibilityLabel("连接测试通过")
+                    }
+                }
+                if let connectionError {
+                    Text(connectionError).font(.caption).foregroundStyle(.secondary)
                 }
                 if settings.value.provider == .doubao {
                     Text("使用小时版，按语音时长计费。").font(.caption).foregroundStyle(.secondary)
                 }
             }
+            SpeechVocabularySettings(text: Binding(get: { settings.value.speechHotwords ?? "" },
+                                                   set: { settings.value.speechHotwords = $0 }),
+                                     provider: settings.value.provider)
             Section("麦克风与录音测试") {
                 HStack {
                     Label(permission == .authorized ? "麦克风已授权" : "需要麦克风授权", systemImage: permission == .authorized ? "checkmark.circle.fill" : "mic")
@@ -288,6 +625,7 @@ private struct VoiceSettings: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 permission = AVCaptureDevice.authorizationStatus(for: .audio)
             }
+            .onChange(of: connectionInputs) { resetConnectionResult() }
             .onChange(of: asrAccount, initial: true) {
                 asrKey = ""
                 do { asrKey = try CredentialStore.shared.read(asrAccount) }
@@ -301,6 +639,20 @@ private struct VoiceSettings: View {
 
     private var asrAccount: String { settings.value.asrAccount }
 
+    private var connectionInputs: [String] {
+        let value = settings.value
+        switch value.provider {
+        case .doubao: return [asrAccount, value.doubaoAppID ?? "", asrKey]
+        case .qwen: return [asrAccount, value.qwenWorkspaceID ?? "", asrKey]
+        case .tencent: return [asrAccount, value.tencentAppID ?? "", value.tencentSecretID ?? "", asrKey]
+        }
+    }
+
+    private func resetConnectionResult() {
+        connectionPassed = false
+        connectionError = nil
+    }
+
     private var asrKeyLabel: String {
         switch settings.value.provider {
         case .doubao: return settings.value.doubaoLegacyAuth == true ? "Access Token" : "API Key"
@@ -311,22 +663,30 @@ private struct VoiceSettings: View {
 
     private func testConnection() {
         let configuration = settings.value
-        let account = asrAccount
+        let provider = configuration.provider
+        let testedInputs = connectionInputs
         testingConnection = true
-        message = "正在测试豆包连接，不会录音…"
+        resetConnectionResult()
         Task { @MainActor in
             defer { testingConnection = false }
-            var session: DoubaoSession?
+            var sink: VoiceAudioSink?
             do {
-                let key = try CredentialStore.shared.read(account)
+                let key = try CredentialStore.shared.read(configuration.asrAccount)
                 guard !key.isEmpty else { throw VoiceTextError.message("请先填写并保存密钥，再测试连接。") }
-                let connection = DoubaoSession(configuration: configuration.doubao, key: key,
-                    appID: configuration.doubaoLegacyAuth == true ? (configuration.doubaoAppID ?? "") : nil)
-                session = connection
-                try await connection.start()
-                message = "豆包 WebSocket 已连接，可以测试录音。"
-            } catch { message = error.localizedDescription }
-            await session?.cancel()
+                let service = try configuration.asrConfiguration()
+                if provider == .qwen {
+                    let hotwords = SpeechHotwords(configuration.speechHotwords ?? "", provider: .qwen).words
+                    try await HTTPService.testQwen(configuration: service, key: key, hotwords: hotwords)
+                } else {
+                    let connection = VoiceAudioSink(settings: configuration, configuration: service, key: key)
+                    sink = connection
+                    try await connection.start()
+                }
+                if testedInputs == connectionInputs { connectionPassed = true }
+            } catch {
+                if testedInputs == connectionInputs { connectionError = error.localizedDescription }
+            }
+            await sink?.cancel()
         }
     }
     private func save(_ value: String, account: String) {
