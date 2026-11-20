@@ -81,6 +81,8 @@ struct SettingsValue: Codable {
     var doubao = ServiceConfiguration.preset(.doubao)
     var doubaoLegacyAuth: Bool? = nil
     var doubaoAppID: String? = nil
+    var doubaoPolish: Bool? = nil
+    var qwenPolish: Bool? = nil
     var qwenWorkspaceID: String? = nil
     var tencentAppID: String? = nil
     var tencentSecretID: String? = nil

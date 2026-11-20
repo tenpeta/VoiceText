@@ -10,7 +10,7 @@ actor VoiceAudioSink {
     private let hotwords: [String]
     private var doubao: DoubaoSession?
     private var tencent: TencentSession?
-    private var file: WAVFile?
+    private var qwen: QwenSession?
     private var samples = 0
 
     init(settings: SettingsValue, configuration: ServiceConfiguration, key: String) {
@@ -23,9 +23,12 @@ actor VoiceAudioSink {
         case .doubao:
             let appID = settings.doubaoLegacyAuth == true ? (settings.doubaoAppID ?? "") : nil
             let session = DoubaoSession(configuration: configuration, key: key, appID: appID)
-            doubao = session; try await session.start(hotwords: hotwords)
+            doubao = session
+            try await session.start(polish: settings.doubaoPolish ?? false, hotwords: hotwords)
         case .qwen:
-            file = try WAVFile(directory: AppPaths.temporary)
+            let session = try QwenSession(configuration: configuration, key: key)
+            qwen = session
+            try await session.start(polish: settings.qwenPolish ?? false, hotwords: hotwords)
         case .tencent:
             let session = try TencentSession(configuration: configuration, appID: settings.tencentAppID ?? "",
                                              secretID: settings.tencentSecretID ?? "", secretKey: key, hotwords: hotwords)
@@ -36,7 +39,7 @@ actor VoiceAudioSink {
         samples += pcm.count / 2
         if let doubao { try await doubao.append(pcm) }
         else if let tencent { try await tencent.append(pcm) }
-        else { try file?.append(pcm) }
+        else { try await qwen?.append(pcm) }
     }
     func finish() async throws -> ASRResult {
         let interval = Performance.voice.beginInterval("FinalASR")
@@ -44,15 +47,13 @@ actor VoiceAudioSink {
         guard samples >= 4800 else { throw VoiceTextError.noSpeech }
         if let doubao { return try await doubao.finish() }
         if let tencent { return try await tencent.finish() }
-        guard let file else { throw CancellationError() }
-        defer { file.remove(); self.file = nil }
-        try file.finish()
-        return try await HTTPService.recognizeQwen(file: file.url, configuration: configuration, key: key, hotwords: hotwords)
+        if let qwen { return try await qwen.finish() }
+        throw CancellationError()
     }
     func cancel() async {
         await doubao?.cancel(); doubao = nil
         await tencent?.cancel(); tencent = nil
-        file?.remove(); file = nil
+        await qwen?.cancel(); qwen = nil
     }
 }
 
@@ -103,7 +104,7 @@ final class VoiceCoordinator: ObservableObject {
         } catch { hasError = true; update(.idle, error.localizedDescription); return }
         let id = UUID(); generation = id; seconds = 0
         let capture = AudioCapture(); self.capture = capture
-        update(.connecting, configuration.provider == .qwen ? "正在准备录音…" : "正在连接\(configuration.provider.title)语音识别…")
+        update(.connecting, "正在连接\(configuration.provider.title)语音识别…")
         task = Task {
             guard self.generation == id, !Task.isCancelled else { return }
             let sink = VoiceAudioSink(settings: configuration, configuration: service, key: key)

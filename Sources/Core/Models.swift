@@ -14,21 +14,21 @@ enum ASRProvider: String, Codable, CaseIterable, Identifiable, Sendable {
     var defaultEndpoint: String {
         switch self {
         case .doubao: return "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
-        case .qwen: return "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        case .qwen: return "wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
         case .tencent: return "wss://asr.cloud.tencent.com/asr/v2"
         }
     }
     var defaultModel: String {
         switch self {
         case .doubao: return "volc.seedasr.sauc.duration"
-        case .qwen: return "qwen-audio-3.1-asr-flash"
+        case .qwen: return "qwen-audio-3.1-asr-flash-message"
         case .tencent: return "Hy-ASR-3.0-preview"
         }
     }
     var modelTitle: String {
         switch self {
         case .doubao: return "豆包流式语音识别 2.0"
-        case .qwen: return "千问语音识别 3.1 Flash"
+        case .qwen: return "千问流式语音识别 3.1 Flash Message"
         case .tencent: return "混元语音识别 3.0 预览版"
         }
     }

@@ -285,7 +285,7 @@ private struct SpeechVocabularySettings: View {
     var body: some View {
         let entries = SpeechHotwords.entries(in: text)
         let active = Set(SpeechHotwords(text, provider: provider).words)
-        Section("语音词表") {
+        Section("热词") {
             HStack {
                 Text("输入词或短语")
                     .accessibilityHidden(true)
@@ -335,7 +335,7 @@ private struct SpeechVocabularySettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if active.count < entries.count {
-                Text("带提示图标的词条仍在词表中，当前服务商会跳过。\(providerLimits)")
+                Text("带提示图标的热词会保留在本机，当前服务商会跳过。\(providerLimits)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -571,6 +571,13 @@ private struct VoiceSettings: View {
                     }
                 }
                 SecureField(asrKeyLabel, text: $asrKey)
+                if settings.value.provider == .qwen {
+                    Toggle("文本润色", isOn: Binding(get: { settings.value.qwenPolish ?? false },
+                                                   set: { settings.value.qwenPolish = $0 }))
+                } else if settings.value.provider == .doubao {
+                    Toggle("语义顺滑", isOn: Binding(get: { settings.value.doubaoPolish ?? false },
+                                                   set: { settings.value.doubaoPolish = $0 }))
+                }
                 HStack {
                     Button("保存密钥") {
                         resetConnectionResult()
@@ -642,8 +649,8 @@ private struct VoiceSettings: View {
     private var connectionInputs: [String] {
         let value = settings.value
         switch value.provider {
-        case .doubao: return [asrAccount, value.doubaoAppID ?? "", asrKey]
-        case .qwen: return [asrAccount, value.qwenWorkspaceID ?? "", asrKey]
+        case .doubao: return [asrAccount, value.doubaoAppID ?? "", String(value.doubaoPolish ?? false), asrKey]
+        case .qwen: return [asrAccount, value.qwenWorkspaceID ?? "", String(value.qwenPolish ?? false), asrKey]
         case .tencent: return [asrAccount, value.tencentAppID ?? "", value.tencentSecretID ?? "", asrKey]
         }
     }
@@ -663,7 +670,6 @@ private struct VoiceSettings: View {
 
     private func testConnection() {
         let configuration = settings.value
-        let provider = configuration.provider
         let testedInputs = connectionInputs
         testingConnection = true
         resetConnectionResult()
@@ -674,14 +680,9 @@ private struct VoiceSettings: View {
                 let key = try CredentialStore.shared.read(configuration.asrAccount)
                 guard !key.isEmpty else { throw VoiceTextError.message("请先填写并保存密钥，再测试连接。") }
                 let service = try configuration.asrConfiguration()
-                if provider == .qwen {
-                    let hotwords = SpeechHotwords(configuration.speechHotwords ?? "", provider: .qwen).words
-                    try await HTTPService.testQwen(configuration: service, key: key, hotwords: hotwords)
-                } else {
-                    let connection = VoiceAudioSink(settings: configuration, configuration: service, key: key)
-                    sink = connection
-                    try await connection.start()
-                }
+                let connection = VoiceAudioSink(settings: configuration, configuration: service, key: key)
+                sink = connection
+                try await connection.start()
                 if testedInputs == connectionInputs { connectionPassed = true }
             } catch {
                 if testedInputs == connectionInputs { connectionError = error.localizedDescription }

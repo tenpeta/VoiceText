@@ -12,7 +12,7 @@ let package = Package(
                 exclude: ["App", "CandidateUI", "InputMethod", "RimeEngine", "SettingsUI", "Storage/AppPaths.swift",
                           "Storage/AppSettings.swift",
                           "Voice/ASR/HTTPService.swift", "Voice/VoiceCoordinator.swift"],
-                sources: ["Core", "Storage/HistoryStore.swift", "Storage/CredentialStore.swift", "Voice/ASR/Doubao/DoubaoProtocol.swift", "Voice/ASR/Doubao/DoubaoSession.swift", "Voice/ASR/TencentSession.swift",
+                sources: ["Core", "Storage/HistoryStore.swift", "Storage/CredentialStore.swift", "Voice/ASR/Doubao/DoubaoProtocol.swift", "Voice/ASR/Doubao/DoubaoSession.swift", "Voice/ASR/TencentSession.swift", "Voice/ASR/QwenSession.swift",
                           "Voice/AudioCapture/WAVFile.swift", "Voice/AudioCapture/AudioCapture.swift"], linkerSettings: [.linkedLibrary("sqlite3")]),
         .testTarget(name: "VoiceTextCoreTests", dependencies: ["VoiceTextCore"], path: "Tests", exclude: ["RimeSmoke.c"])
     ]

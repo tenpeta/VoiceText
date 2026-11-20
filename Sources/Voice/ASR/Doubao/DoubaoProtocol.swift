@@ -7,10 +7,10 @@ enum DoubaoProtocol {
         let final: Bool
     }
 
-    static func request(hotwords: [String] = []) throws -> Data {
+    static func request(polish: Bool = false, hotwords: [String] = []) throws -> Data {
         var request: [String: Any] = [
             "model_name": "bigmodel", "enable_itn": true, "enable_punc": true,
-            "enable_ddc": false, "show_utterances": false
+            "enable_ddc": polish, "show_utterances": false
         ]
         if !hotwords.isEmpty {
             let context = try JSONSerialization.data(withJSONObject: ["hotwords": hotwords.map { ["word": $0] }])

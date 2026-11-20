@@ -47,7 +47,6 @@ final class VoiceTextCoreTests: XCTestCase {
 
     func testEmptyTranscriptIsNoSpeechWhileMalformedResponseRemainsAnError() throws {
         let responses = [
-            (ASRRequests.qwenTranscript, #"{"output":{"text":"  "}}"#),
             (ASRRequests.chatTranscript, #"{"choices":[{"message":{"content":"  "}}]}"#)
         ]
         for (parse, json) in responses {
@@ -155,6 +154,12 @@ final class VoiceTextCoreTests: XCTestCase {
         let audio = try XCTUnwrap(json["audio"] as? [String: Any])
         XCTAssertEqual(audio["rate"] as? Int, 16000)
         XCTAssertEqual((json["request"] as? [String: Any])?["model_name"] as? String, "bigmodel")
+        XCTAssertEqual((json["request"] as? [String: Any])?["enable_ddc"] as? Bool, false)
+
+        let polishedRequest = try DoubaoProtocol.request(polish: true)
+        let polishedBody = try DoubaoProtocol.gunzip(Data(polishedRequest.dropFirst(8)))
+        let polishedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: polishedBody) as? [String: Any])
+        XCTAssertEqual((polishedJSON["request"] as? [String: Any])?["enable_ddc"] as? Bool, true)
     }
 
     func testDoubaoResponsesAreSnapshotsAndRecognizeLastPacket() throws {
@@ -175,19 +180,23 @@ final class VoiceTextCoreTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "wss://asr.cloud.tencent.com/asr/v2/123456?engine_model_type=Hy-ASR-3.0-preview&expired=1700000600&nonce=42&secretid=TestID&timestamp=1700000000&voice_format=1&voice_id=voice-test&signature=Uz3FCWPfYfs7RrOhNoGz4TonS34%3D")
     }
 
-    func testQwenBeijingConfigurationAndNativeAPI() throws {
+    func testQwenBeijingConfigurationAndWebSocketRequest() throws {
         let configuration = try ASRProvider.qwenConfiguration(workspaceID: " ws-example ")
-        XCTAssertEqual(try configuration.url().host, "ws-example.cn-beijing.maas.aliyuncs.com")
+        XCTAssertEqual(try configuration.url(streaming: true).absoluteString,
+                       "wss://ws-example.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
         XCTAssertThrowsError(try ASRProvider.qwenConfiguration(workspaceID: ""))
-        let body = try ASRRequests.qwenBody(wav: Data([1, 2, 3, 4]), model: configuration.model)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(json["model"] as? String, "qwen-audio-3.1-asr-flash")
-        XCTAssertEqual(json["parameters"] as? [String: String], ["format": "wav", "sample_rate": "16000"])
-        let input = try XCTUnwrap(json["input"] as? [String: Any])
-        let messages = try XCTUnwrap(input["messages"] as? [[String: Any]])
-        let content = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
-        XCTAssertEqual((content.first?["input_audio"] as? [String: Any])?["data"] as? String, "data:audio/wav;base64,AQIDBA==")
-        XCTAssertEqual(try ASRRequests.qwenTranscript(Data(#"{"output":{"text":"中文听写"}}"#.utf8)), "中文听写")
+        for polish in [false, true] {
+            let body = try ASRRequests.qwenStart(taskID: "example", model: configuration.model, polish: polish, hotwords: [])
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+            XCTAssertEqual(json["header"] as? [String: String],
+                           ["action": "run-task", "task_id": "example", "streaming": "duplex"])
+            let payload = try XCTUnwrap(json["payload"] as? [String: Any])
+            XCTAssertEqual(payload["model"] as? String, "qwen-audio-3.1-asr-flash-message")
+            let parameters = try XCTUnwrap(payload["parameters"] as? [String: Any])
+            XCTAssertEqual(parameters["format"] as? String, "pcm")
+            XCTAssertEqual(parameters["sample_rate"] as? Int, 16000)
+            XCTAssertEqual(parameters["disfluency_removal_enabled"] as? Bool, polish)
+        }
         XCTAssertEqual(try ASRRequests.chatTranscript(Data(#"{"choices":[{"message":{"content":"完成。"}}]}"#.utf8)), "完成。")
         XCTAssertThrowsError(try ServiceConfiguration(endpoint: "http://example.com", model: "m").url())
         XCTAssertThrowsError(try ServiceConfiguration(endpoint: "https://key@example.com", model: "m").url())
@@ -214,9 +223,12 @@ final class VoiceTextCoreTests: XCTestCase {
         let decoded = try JSONSerialization.jsonObject(with: Data(context.utf8)) as? [String: [[String: String]]]
         XCTAssertEqual(decoded?["hotwords"]?.compactMap { $0["word"] }, hotwords.words)
 
-        let qwenBody = try ASRRequests.qwenBody(wav: Data(), model: ASRProvider.qwen.defaultModel, hotwords: qwenHotwords.words)
-        let qwen = try JSONSerialization.jsonObject(with: qwenBody) as? [String: Any]
-        let parameters = qwen?["parameters"] as? [String: Any]
+        let qwenBody = try ASRRequests.qwenStart(taskID: "example", model: ASRProvider.qwen.defaultModel,
+                                                 polish: true, hotwords: qwenHotwords.words)
+        let qwen = try JSONSerialization.jsonObject(with: Data(qwenBody.utf8)) as? [String: Any]
+        let payload = qwen?["payload"] as? [String: Any]
+        let parameters = payload?["parameters"] as? [String: Any]
+        XCTAssertEqual(parameters?["disfluency_removal_enabled"] as? Bool, true)
         XCTAssertEqual(parameters?["vocabulary"] as? [String: Int], ["Codex": 4, "语音识别": 4, "C++": 4, "Claude Code": 4])
 
         let url = try TencentSession.signedURL(configuration: .preset(.tencent), appID: "123456",

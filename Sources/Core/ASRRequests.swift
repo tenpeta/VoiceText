@@ -46,23 +46,25 @@ struct SpeechHotwords {
 }
 
 enum ASRRequests {
-    static func qwenBody(wav: Data, model: String, hotwords: [String] = []) throws -> Data {
-        let audio = ["type": "input_audio", "input_audio": ["data": "data:audio/wav;base64," + wav.base64EncodedString()]] as [String: Any]
-        var parameters: [String: Any] = ["format": "wav", "sample_rate": "16000"]
+    static func qwenStart(taskID: String, model: String, polish: Bool, hotwords: [String]) throws -> String {
+        var parameters: [String: Any] = [
+            "format": "pcm", "sample_rate": 16000, "disfluency_removal_enabled": polish
+        ]
         if !hotwords.isEmpty {
             parameters["vocabulary"] = Dictionary(hotwords.map { ($0, 4) }, uniquingKeysWith: { first, _ in first })
         }
-        return try JSONSerialization.data(withJSONObject: [
-            "model": model,
-            "input": ["messages": [["role": "user", "content": [audio]]]],
-            "parameters": parameters
+        return try qwenCommand("run-task", taskID: taskID, payload: [
+            "task_group": "audio", "task": "asr", "function": "recognition",
+            "model": model, "parameters": parameters, "input": [:]
         ])
     }
 
-    static func qwenTranscript(_ data: Data) throws -> String {
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let output = json?["output"] as? [String: Any]
-        return try validatedText(output?["text"] as? String)
+    static func qwenCommand(_ action: String, taskID: String, payload: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "header": ["action": action, "task_id": taskID, "streaming": "duplex"],
+            "payload": payload
+        ])
+        return String(decoding: data, as: UTF8.self)
     }
 
     static func chatTranscript(_ data: Data) throws -> String {
